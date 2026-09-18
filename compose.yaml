@@ -1,0 +1,24 @@
+name: lgpd
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?Defina DB_NAME em .env}
+      POSTGRES_USER: lgpd_admin
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?Defina DB_ADMIN_PASSWORD em .env}
+      DB_RUNTIME_USER: ${DB_RUNTIME_USER:?Defina DB_RUNTIME_USER em .env}
+      DB_RUNTIME_PASSWORD: ${DB_RUNTIME_PASSWORD:?Defina DB_RUNTIME_PASSWORD em .env}
+      DB_MIGRATION_USER: ${DB_MIGRATION_USER:?Defina DB_MIGRATION_USER em .env}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?Defina DB_MIGRATION_PASSWORD em .env}
+    ports:
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lgpd_admin -d $$POSTGRES_DB']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  postgres_data:
