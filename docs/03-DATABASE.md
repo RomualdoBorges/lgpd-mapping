@@ -2064,3 +2064,19 @@ quem pode administrar
 serão especificadas em:
 
 `04-AUTHORIZATION.md`
+
+## Infraestrutura implementada — Slice 2
+
+Schema e migrations versionados em `apps/api/src/persistence/schema.ts` e `apps/api/drizzle/migrations/`. Entidades: Organization, BusinessUnit, User, Membership, Role e RoleAssignment; `role_assignment_business_units` é associação auxiliar por concessão. Não implementa Permissions ou features funcionais.
+
+Membership possui unicidade `(organization_id, user_id)` e indicador explícito `active`, sem propagar inativação a outros vínculos. Unicidades/FKs compostas preservam Organization em Membership → RoleAssignment → BusinessUnit. A associação de áreas exige scope BUSINESS_UNIT; ORGANIZATION não recebe lista de áreas. Concessões sem associações não implicam acesso a áreas nem herança. Role é catálogo global sem organization_id, com código globalmente único e estável (DEC-049); registra apenas código estrutural, sem permissões ou gestão/customização de catálogos. DBQ-005 continua OPEN para os demais catálogos. User permanece global, sem unicidade de e-mail ou união automática de identidades. Não foram introduzidos soft delete, hierarquia ou unicidade de nome de área; essas questões continuam pendentes.
+
+Organization (id como chave de tenant), BusinessUnit, Membership, RoleAssignment e sua associação têm ENABLE/FORCE RLS e policy com USING/WITH CHECK comparando contexto transaction-local. Runtime não possui propriedade das tabelas nem grants de preparação/TRUNCATE. User/Role globais não possuem grants runtime neste slice; sua exposição funcional/proteção específica continua pendente.
+
+Boundary reutilizável: `DatabaseService.withTenant` / `withTenant`, com contexto parametrizado e local à transação Drizzle. Chamador futuro fornece contexto autorizado e usa exclusivamente a transação recebida. Não implementa autenticação, descoberta de Memberships, Permission ou Scope funcional.
+
+Entry point oficial: `pnpm --filter @lgpd/api db:migrate`. Wrapper mínimo de `migrate()` (`drizzle-orm/node-postgres/migrator`), com journal oficial `public.__drizzle_migrations`. Descoberta, aplicação, seleção de migrations e registro ficam a cargo do Drizzle; não há journal próprio ou comparação histórica de hashes.
+
+Advisory lock de sessão adquirido na conexão exclusiva de migration antes de toda a chamada oficial, incluindo bootstrap e leitura do journal. Encerramento da conexão no `finally` libera o lock em sucesso/erro; não reutilizar essa sessão no runtime. Somente `lgpd_migrator` recebe CREATE no database LGPD provisionado/testado, mantendo NOCREATEDB, NOSUPERUSER, NOBYPASSRLS e NOCREATEROLE. Runtime mantém seus privilégios restritos. A configuração do nome da role runtime para a migration de grants não é contexto de tenant.
+
+Operação local e testes exclusivos descritos em `../README.md`. Nenhuma Open Question foi encerrada por esse ajuste autorizado.

@@ -9,5 +9,6 @@ export default defineConfig({
   dialect: 'postgresql',
   schema: './src/persistence/schema.ts',
   out: './drizzle/migrations',
+  migrations: { schema: 'public', table: '__drizzle_migrations' },
   dbCredentials: databaseConfiguration(process.env, 'MIGRATION'),
 });

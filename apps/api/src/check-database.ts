@@ -12,7 +12,8 @@ async function check(): Promise<void> {
   try {
     if (process.env.DB_RUNTIME_USER === process.env.DB_MIGRATION_USER)
       throw new Error('Roles must differ');
-    const query = `select current_user as username, rolsuper, rolbypassrls, rolcreaterole,
+    const query = `select current_user as username, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb,
+      has_database_privilege(current_user, current_database(), 'CREATE') as db_create,
       has_schema_privilege(current_user, 'public', 'CREATE') as can_create
       from pg_roles where rolname = current_user`;
     const a = (await runtime.query(query)).rows[0];
@@ -23,9 +24,14 @@ async function check(): Promise<void> {
       a.rolsuper ||
       a.rolbypassrls ||
       a.rolcreaterole ||
+      a.rolcreatedb ||
+      a.db_create ||
       a.can_create ||
       b.rolsuper ||
       b.rolbypassrls ||
+      b.rolcreaterole ||
+      b.rolcreatedb ||
+      !b.db_create ||
       !b.can_create
     )
       throw new Error('Invalid privileges');

@@ -2524,6 +2524,37 @@ A infraestrutura será implementada em etapa posterior. TESTQ-001 permanece OPEN
 
 ---
 
+# DEC-049 — Role como catálogo global da plataforma
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-18
+
+## Related Questions
+
+DBQ-005, exclusivamente quanto a Role. DBQ-005 permanece OPEN para os demais catálogos.
+
+## Context
+
+Aprovação humana expressa após a auditoria do Slice 2.
+
+## Decision
+
+Role é catálogo global da plataforma, sem organization_id. Seu code é globalmente único, estável e não pode ser criado ou redefinido por Organizations. RoleAssignment concede Role no contexto de Membership; o contexto tenant continua vindo de Membership/Organization. Scope e BusinessUnits pertencem à concessão, não à definição global de Role.
+
+## Rationale
+
+Separar a definição estrutural compartilhada do papel de sua concessão independente em cada organização.
+
+## Consequences
+
+Esta decisão não resolve catálogo definitivo de roles, papel ADMIN, PLATFORM, OWN, matriz definitiva de permissions, custom roles, administração de roles pelo tenant, hierarquia de roles ou autorização funcional futura. Papéis concretos e permissões continuam sujeitos às respectivas Decisions/Open Questions. Não implica grants runtime para Role neste slice.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 03-DATABASE.md, 21-DATA-DICTIONARY.md, 23-SEED-AND-CATALOGS.md, 11-TESTING.md, ../README.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -2576,6 +2607,7 @@ A infraestrutura será implementada em etapa posterior. TESTQ-001 permanece OPEN
 | DEC-046 | RLS adicional e contexto local à transação |
 | DEC-047 | Vitest como runner de testes do backend |
 | DEC-048 | Estratégia híbrida de isolamento/reset dos testes de persistência |
+| DEC-049 | Role como catálogo global da plataforma |
 
 ---
 

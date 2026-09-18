@@ -10,7 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json",
     "db:check": "node --env-file-if-exists=../../.env dist/check-database.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/migrate-database.ts",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "pnpm build && vitest run --project integration"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.3",
@@ -26,6 +28,7 @@
     "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.20.6",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.11"
   }
 }

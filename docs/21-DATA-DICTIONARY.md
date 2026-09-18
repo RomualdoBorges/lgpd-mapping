@@ -19,6 +19,8 @@ RoleAssignment → Scope ORGANIZATION ou BUSINESS_UNIT → áreas autorizadas
 
 Cada Membership liga exatamente um User a uma Organization, sem duplicar o vínculo. Cada Business Unit pertence exatamente a uma Organization. RoleAssignments pertencem ao contexto do Membership; suas áreas devem pertencer à mesma Organization. Login não concede vínculo nem papel automaticamente.
 
+DEC-049: Role é catálogo global, sem organization_id, com code único e estável na plataforma. Membership/RoleAssignment preservam o contexto organizacional; scope e áreas pertencem à concessão. Isso não decide catálogo definitivo, ADMIN, OWN/PLATFORM, permissions, custom roles, administração pelo tenant, hierarquia ou autorização funcional. DBQ-005 permanece OPEN para outros catálogos.
+
 Autorização no backend: identidade autenticada + Membership ativo no tenant solicitado + permission + scope + restrições do caso de uso. Não calcular o produto de todos os roles por todas as áreas. OWN, PLATFORM, ADMIN e PLATFORM_ADMIN não são aprovados por estas decisões.
 
 | Papel | Leitura de Activities na primeira entrega | Leitura de ROPA na primeira entrega |

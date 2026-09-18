@@ -19,7 +19,9 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:local": "node scripts/smoke.mjs --without-db"
+    "smoke:local": "node scripts/smoke.mjs --without-db",
+    "test:unit": "pnpm --filter @lgpd/api test:unit",
+    "test:integration": "pnpm --filter @lgpd/api test:integration"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
