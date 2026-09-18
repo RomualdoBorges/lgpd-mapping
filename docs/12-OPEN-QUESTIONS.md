@@ -3028,6 +3028,10 @@ organization_id = NULL
 
 como dados globais do sistema?
 
+### Cobertura parcial aprovada
+
+DEC-049 responde exclusivamente à parte relativa a Role: catálogo global, sem organization_id, com code globalmente único e estável. O vínculo tenant e scope/BusinessUnits permanecem na concessão via Membership/RoleAssignment. A questão permanece OPEN, com prioridade MEDIUM, para os demais catálogos; a decisão não aprova catálogo definitivo de roles ou permissões.
+
 ---
 
 ## DBQ-006 — ConsentDocument

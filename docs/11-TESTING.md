@@ -2705,3 +2705,25 @@ ROPA incorreto
 As decisões ainda não tomadas, dependências entre decisões, prioridades e questões que precisam ser respondidas antes da implementação serão consolidadas em:
 
 `12-OPEN-QUESTIONS.md`
+
+## Infraestrutura executável — Slice 2
+
+Vitest backend (DEC-047), projetos `unit` e `integration`, configuração Node em `apps/api/vitest.config.ts`. Comandos: `pnpm test:unit` e `pnpm test:integration`. A integração compila TypeScript/NestJS com metadata real antes de executar a suite; não instala transformer adicional nem runner E2E.
+
+DEC-048 implementada com banco exclusivo por execução no PostgreSQL oficial LGPD, migrations reais, fixtures fictícios e limpeza serial por lista explícita de tabelas. Proteção destrutiva verifica nome único esperado, marcador do banco no catálogo e banco conectado. Credenciais administrativas provisionam/removem somente esse banco; migration prepara schema/fixtures; runtime restrito executa os cenários de RLS. Não se limpa desenvolvimento nem se concede privilégio de preparação ao runtime.
+
+`apps/api/test/integration/tenant-persistence.test.ts` cobre os dez cenários de isolamento/integridade, migrations desde banco vazio, relações estruturais e DI NestJS. Commit/rollback são reais; testes de pool comparam PID PostgreSQL na conexão reutilizada antes de fechar o pool. Testes unitários cobrem rejeição de tenant inválido antes da transação e proteção contra limpeza indevida. Não há SQLite ou rollback externo envolvendo a suite.
+
+TESTQ-001 e as questões de CI, E2E, cobertura e paralelização futura continuam com seus estados anteriores. Esta infraestrutura local não escolhe Testcontainers ou Docker em CI. Ver instruções operacionais em `../README.md`.
+
+
+A infraestrutura usa o migrator oficial do Drizzle, journal em `public.__drizzle_migrations` e lock de sessão em conexão exclusiva envolvendo toda a chamada, inclusive bootstrap. Somente a migration role recebe CREATE no database LGPD exclusivo, sem CREATEDB/SUPERUSER/BYPASSRLS/CREATEROLE; runtime mantém ausência de CREATE no database/schema.
+
+A preparação executa dois migrators concorrentes desde banco vazio. A suite verifica journal oficial, ausência de registros duplicados, reaplicação idempotente, privilégios separados e rejeição de CREATE SCHEMA/objetos em public pelo runtime. Não há implementação ou política de comparação histórica de checksum. TESTQ-001 permanece OPEN.
+
+
+### Controles adicionais após auditoria
+
+DEC-049 aprova apenas a definição global de Role; não define permissions ou catálogo definitivo. Controles positivos UPDATE/DELETE usam BusinessUnits próprias dedicadas e mantêm as assertions negativas cross-tenant. O bootstrap vazio é disputado por dois processos Node independentes no entry point real; locks SQL temporários no banco exclusivo permitem observar duas esperas pelo advisory lock e, depois, somente um holder bloqueado no bootstrap enquanto o outro espera. Ambos devem terminar com sucesso, com exatamente as migrations versionadas no journal. Polling consulta o estado real, sem hooks no runner.
+
+Uma sessão de migration read-only provoca erro no bootstrap oficial após aquisição do lock, sem modificar SQL versionado; verifica descarte da sessão e aquisição posterior por outro executor. Cleanup fecha todos os pools e garante finally administrativo; falha de fechamento ou ausência de marcador mantém o banco residual, sem relaxar proteção destrutiva. Detalhes operacionais no README.

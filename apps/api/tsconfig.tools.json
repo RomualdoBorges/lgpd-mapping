@@ -4,5 +4,5 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": ["drizzle.config.ts", "src/config/environment.ts"]
+  "include": ["drizzle.config.ts", "vitest.config.ts", "test/**/*.ts"]
 }

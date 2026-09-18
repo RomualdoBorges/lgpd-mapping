@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789754035408,
+      "tag": "0000_identity_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789754043586,
+      "tag": "0001_tenant_rls",
+      "breakpoints": true
+    }
+  ]
+}
