@@ -543,7 +543,7 @@ Integration/E2E podem ser adicionados conforme infraestrutura necessária.
 
 # 22. Bloqueadores Phase 0
 
-DBQ-001, DBQ-008 e DBQ-009 estão DECIDED (DEC-044 a DEC-046); não bloqueiam mais a persistência. O bootstrap local de frontend/backend, TypeScript, lint/build e PostgreSQL pode começar sem decisões de Authentication ou Activity. TESTQ-011 deve ser confirmado antes da configuração definitiva do runner backend; INFRAQ-006 antes do pipeline específico de CI. Esses pontos não impedem bootstrap e smoke checks locais. A integração de autenticação e modelos de features continua dependente das questões específicas.
+DBQ-001, DBQ-008 e DBQ-009 estão DECIDED (DEC-044 a DEC-046); não bloqueiam mais a persistência. O bootstrap local de frontend/backend, TypeScript, lint/build e PostgreSQL pode começar sem decisões de Authentication ou Activity. TESTQ-011 está DECIDED em DEC-047: Vitest é o runner backend aprovado; INFRAQ-006 antes do pipeline específico de CI. Esses pontos não impedem bootstrap e smoke checks locais. A integração de autenticação e modelos de features continua dependente das questões específicas.
 
 ---
 

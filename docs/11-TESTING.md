@@ -183,15 +183,7 @@ Testing Library
 Playwright
 ```
 
-Backend pode utilizar:
-
-```text
-Vitest
-```
-
-caso seja compatível com a stack final.
-
-Se NestJS exigir alguma decisão diferente na implementação, registrar antes de introduzir outro runner.
+Runner aprovado do backend: **Vitest** (TESTQ-011 / DEC-047), para testes unitários e de integração. Configuração própria compatível com NestJS, ESM/NodeNext e TypeScript. A escolha não aprova ferramentas de frontend/E2E nem implementa o runner. Trocar o runner exige nova decisão explícita.
 
 Evitar manter dois frameworks de testes sem necessidade.
 
@@ -802,17 +794,21 @@ Adicionar proteção para impedir execução destrutiva acidental contra produç
 
 Cada suíte deve possuir estado previsível.
 
-Estratégias possíveis:
+Estratégia híbrida aprovada (TESTQ-012 / DEC-048):
 
-```text
-transaction rollback
+- Banco exclusivo de testes por execução.
+- Migrations reais para preparar o schema.
+- Limpeza dos dados entre testes de integração quando apropriado.
+- Transações reais da aplicação nas suites que validam persistência, RLS, pool, commit e rollback.
+- Recriação do banco/schema quando a suite precisar validar migrations ou alterações estruturais.
+- Rollback externo por teste somente quando não esconder o comportamento validado.
+- Inicialmente, testes de integração que compartilham o mesmo banco executam serialmente.
+- Operações destinadas a validar RLS utilizam a role runtime restrita.
+- Credenciais de migration/preparação não podem mascarar testes de segurança.
+- A infraestrutura impede explicitamente limpeza acidental de bancos que não sejam exclusivos de teste.
+- SQLite não substitui PostgreSQL nos testes de comportamento específico do PostgreSQL.
 
-truncate
-
-database recreation
-```
-
-A estratégia definitiva depende do ORM e velocidade dos testes.
+Os dez cenários de isolamento/integridade de DEC-048, derivados de DEC-045 e DEC-046, continuam obrigatórios, assim como os requisitos de autorização por scope da DEC-046. Credenciais de preparação são separadas das operações que comprovam segurança. A estratégia não escolhe provisionamento do PostgreSQL em CI, Testcontainers ou paralelização futura.
 
 ---
 
@@ -2312,15 +2308,9 @@ Registrar também em `12-OPEN-QUESTIONS.md`.
 
 ### TESTQ-011 — Runner backend
 
-Confirmar:
+**Status:** DECIDED — DEC-047. Vitest será o runner de testes do backend.
 
-```text
-Vitest
-```
-
-como runner também do backend?
-
-**Impacto:** baixo/médio.
+Referência preservada para rastreabilidade; não é questão pendente.
 
 ---
 
@@ -2342,15 +2332,9 @@ PostgreSQL dedicado
 
 ### TESTQ-012 — Reset
 
-Qual estratégia será usada entre testes?
+**Status:** DECIDED — DEC-048. Estratégia híbrida conforme seção 41.
 
-```text
-transaction rollback
-truncate
-recreate
-```
-
-**Impacto:** médio.
+Referência preservada para rastreabilidade; não é questão pendente.
 
 ---
 

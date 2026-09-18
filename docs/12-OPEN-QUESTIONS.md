@@ -5996,11 +5996,11 @@ Qual volume esperado de organizações, usuários, atividades, sistemas e fornec
 
 ## TESTQ-011 — Runner de testes backend
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** MEDIUM  
 **Affected Documents:** [11-TESTING.md](11-TESTING.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md)  
 **Affected Delivery:** Testing / CI / homologação  
-**Blocks:** implementar a decisão «Runner de testes backend» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** Decisão registrada; não bloqueia mais por esta questão.
 
 ### Question
 
@@ -6010,19 +6010,63 @@ Confirmar Vitest também como runner do backend?
 
 Não constitui escolha de novo framework.
 
+### Decision
+
+[DEC-047](13-DECISIONS.md) — Vitest será o runner de testes do backend (alternativa A).
+
+### Rationale
+
+Aprovação expressa do usuário das recomendações analisadas, sem ampliação do escopo.
+
+### Impact
+
+Configuração futura do runner backend, respeitando NestJS, ESM/NodeNext e TypeScript. Não implementa Vitest nem escolhe ferramentas de frontend/E2E.
+
+### Decision Date
+
+2026-09-18
+
 ---
 
 ## TESTQ-012 — Isolamento e reset entre testes
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** MEDIUM  
 **Affected Documents:** [11-TESTING.md](11-TESTING.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md)  
 **Affected Delivery:** Testing / CI / homologação  
-**Blocks:** implementar a decisão «Isolamento e reset entre testes» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** Decisão registrada; não bloqueia mais por esta questão.
 
 ### Question
 
 Qual estratégia será utilizada entre testes: rollback de transação, truncate ou recriação?
+
+### Decision
+
+[DEC-048](13-DECISIONS.md) — Adotar estratégia híbrida de isolamento/reset dos testes de persistência (alternativa D).
+
+- Banco exclusivo de testes por execução.
+- Migrations reais para preparar o schema.
+- Limpeza dos dados entre testes de integração quando apropriado.
+- Transações reais da aplicação nas suites que validam persistência, RLS, pool, commit e rollback.
+- Recriação do banco/schema quando a suite precisar validar migrations ou alterações estruturais.
+- Rollback externo por teste somente quando não esconder o comportamento validado.
+- Inicialmente, testes de integração que compartilham o mesmo banco executam serialmente.
+- Operações destinadas a validar RLS utilizam a role runtime restrita.
+- Credenciais de migration/preparação não podem mascarar testes de segurança.
+- A infraestrutura impede explicitamente limpeza acidental de bancos que não sejam exclusivos de teste.
+- SQLite não substitui PostgreSQL nos testes de comportamento específico do PostgreSQL.
+
+### Rationale
+
+Aprovação expressa do usuário das recomendações analisadas, sem ampliação do escopo.
+
+### Impact
+
+Infraestrutura futura de integração PostgreSQL, constraints compostas, RLS, transações e pool. Os dez cenários de isolamento/integridade derivados de DEC-045 e DEC-046 continuam obrigatórios; o requisito adicional de scope de Business Unit da DEC-046 também permanece preservado.
+
+### Decision Date
+
+2026-09-18
 
 ---
 

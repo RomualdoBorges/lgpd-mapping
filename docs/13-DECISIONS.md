@@ -2435,6 +2435,95 @@ AGENTS.md, 12-OPEN-QUESTIONS.md, 01-ARCHITECTURE.md, 03-DATABASE.md, 07-API.md, 
 
 ---
 
+# DEC-047 — Vitest como runner de testes do backend
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-18
+
+## Related Questions
+
+TESTQ-011.
+
+## Context
+
+Aprovação expressa do usuário da alternativa A, após análise documental do runner backend. Slice 1 concluído; nenhuma implementação autorizada por esta atualização.
+
+## Decision
+
+Vitest será o runner de testes do backend, para testes unitários e de integração. A configuração própria do backend deve respeitar NestJS, ESM/NodeNext, TypeScript e a injeção de dependências.
+
+## Rationale
+
+Consistência com a direção documental e ausência de necessidade identificada para introduzir outro runner.
+
+## Consequences
+
+A configuração será implementada em etapa posterior. O runner não substitui PostgreSQL real nos testes de comportamento específico do banco e não escolhe ferramentas de frontend/E2E, cobertura ou CI.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 11-TESTING.md, 14-IMPLEMENTATION-PLAN.md.
+
+---
+
+# DEC-048 — Estratégia híbrida de isolamento/reset dos testes de persistência
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-18
+
+## Related Questions
+
+TESTQ-012. Dependências: DEC-045 e DEC-046; TESTQ-001 permanece OPEN.
+
+## Context
+
+Aprovação expressa do usuário da alternativa D para permitir isolamento previsível sem esconder o ciclo real das transações e conexões.
+
+## Decision
+
+Adotar estratégia híbrida de isolamento/reset dos testes de persistência:
+
+- Banco exclusivo de testes por execução.
+- Migrations reais para preparar o schema.
+- Limpeza dos dados entre testes de integração quando apropriado.
+- Transações reais da aplicação nas suites que validam persistência, RLS, pool, commit e rollback.
+- Recriação do banco/schema quando a suite precisar validar migrations ou alterações estruturais.
+- Rollback externo por teste somente quando não esconder o comportamento validado.
+- Inicialmente, testes de integração que compartilham o mesmo banco executam serialmente.
+- Operações destinadas a validar RLS utilizam a role runtime restrita.
+- Credenciais de migration/preparação não podem mascarar testes de segurança.
+- A infraestrutura impede explicitamente limpeza acidental de bancos que não sejam exclusivos de teste.
+- SQLite não substitui PostgreSQL nos testes de comportamento específico do PostgreSQL.
+
+## Rationale
+
+Combinar estado previsível entre testes com validação real de constraints, RLS, transações e reutilização do pool, sem usar rollback externo ou descarte de conexão para esconder o comportamento avaliado.
+
+## Consequences
+
+Os dez cenários de isolamento/integridade derivados de DEC-045 e DEC-046 continuam obrigatórios:
+
+1. Tenant A não lê dados do tenant B.
+2. Tenant A não atualiza dados do tenant B.
+3. Tenant A não exclui dados do tenant B.
+4. Relacionamento cross-tenant é rejeitado pelo PostgreSQL.
+5. Consulta sem filtro de tenant continua restrita pelo RLS.
+6. Ausência de contexto de tenant resulta em acesso negado.
+7. Reutilização de conexão do pool não vaza contexto de tenant.
+8. Commit/rollback não deixa contexto residual.
+9. Role runtime não consegue contornar RLS.
+10. Constraints protegem integridade sem validação prévia da aplicação.
+
+O scope de Business Unit continua sendo responsabilidade da autorização da aplicação, conforme DEC-046; esta decisão não remove esse requisito.
+
+A infraestrutura será implementada em etapa posterior. TESTQ-001 permanece OPEN. Não escolhe Testcontainers, Docker em CI, fornecedor de CI, Playwright/E2E, cobertura ou paralelização futura. Recriação de schema não equivale ao isolamento completo de um banco, nem substitui o banco exclusivo de testes por execução.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 11-TESTING.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -2485,6 +2574,8 @@ AGENTS.md, 12-OPEN-QUESTIONS.md, 01-ARCHITECTURE.md, 03-DATABASE.md, 07-API.md, 
 | DEC-044 | Drizzle como ORM e query builder |
 | DEC-045 | Validação da aplicação e integridade composta |
 | DEC-046 | RLS adicional e contexto local à transação |
+| DEC-047 | Vitest como runner de testes do backend |
+| DEC-048 | Estratégia híbrida de isolamento/reset dos testes de persistência |
 
 ---
 
