@@ -1,0 +1,31 @@
+{
+  "name": "@lgpd/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json",
+    "db:check": "node --env-file-if-exists=../../.env dist/check-database.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.3",
+    "@nestjs/core": "^12.0.3",
+    "@nestjs/platform-express": "^12.0.3",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.15.5",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3"
+  }
+}
