@@ -135,11 +135,24 @@ export async function createTestDatabase() {
     await preparation.query(
       `GRANT USAGE ON SCHEMA public TO "${runtimeConfig.user}"`,
     );
-    const concurrency = await verifyConcurrentMigrations(
-      preparation,
-      migration,
-      name,
-    );
+    const migrationCheckCoordinator = await admin.connect();
+    let concurrency;
+    try {
+      await migrationCheckCoordinator.query(
+        "select pg_advisory_lock(hashtext('lgpd:test-migration-concurrency-check'))",
+      );
+      concurrency = await verifyConcurrentMigrations(
+        preparation,
+        migration,
+        name,
+      );
+      await migrationCheckCoordinator.query(
+        "select pg_advisory_unlock(hashtext('lgpd:test-migration-concurrency-check'))",
+      );
+    } finally {
+      // Closing the test-only session also releases the coordination lock on error.
+      migrationCheckCoordinator.release(true);
+    }
     const authProvisioning = readFileSync(
       fileURLToPath(
         new URL(

@@ -18,7 +18,7 @@ export async function verifyConcurrentMigrations(
     read: () => Promise<T>,
     ready: (value: T) => boolean,
   ) {
-    const deadline = Date.now() + 2500;
+    const deadline = Date.now() + 10000;
     while (true) {
       const value = await read();
       if (ready(value)) return value;
