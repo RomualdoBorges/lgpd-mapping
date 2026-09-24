@@ -3110,6 +3110,227 @@ README.md, 03-DATABASE.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 
 
 ---
 
+# DEC-058 — Digest SHA-256 do segredo da Session
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-24
+
+## Related Questions
+
+SECQ-004, somente quanto ao algoritmo de digest da Session. Complementa DEC-042, DEC-053 e DEC-057 sem decidir duração, renovação ou expiração por inatividade.
+
+## Context
+
+A Session server-side persiste somente uma representação não reversível do segredo opaco. A S3.3 precisa transformar o segredo recebido no mesmo valor usado por `resolve_session`, sem ampliar o escopo para geração do segredo ou integração OIDC.
+
+## Decision
+
+O backend calcula:
+
+```text
+tokenDigest = SHA-256(sessionSecret)
+```
+
+O segredo bruto da Session nunca é persistido. Somente o resultado SHA-256 é persistido como `tokenDigest` e fornecido a `resolve_session`. Nesta etapa não utilizar HMAC, Argon2 nem introduzir novo secret operacional para o digest.
+
+A futura geração de `sessionSecret` deve utilizar CSPRNG e alta entropia. Quantidade de bytes, encoding e mecanismo concreto de geração permanecem adiados até a etapa que realmente criar Sessions.
+
+## Rationale
+
+Um segredo opaco de alta entropia permite lookup determinístico por SHA-256 com implementação simples e sem novo secret operacional, preservando a separação entre o segredo apresentado pelo cliente e sua representação persistida.
+
+## Consequences
+
+S3.3 pode calcular o digest no backend antes de chamar o primitive existente. A decisão não altera schema, migration ou assinatura de `resolve_session`.
+
+SECQ-004 permanece OPEN quanto a duração absoluta concreta, renovação, expiração por inatividade, frequência de atualização de atividade e demais detalhes operacionais. Esta decisão também não escolhe fornecedor OIDC, quantidade de bytes, encoding ou mecanismo de geração do segredo.
+
+## Affected Documents
+
+09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
+# DEC-059 — Perfis fixos do cookie de Session por ambiente
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-24
+
+## Related Questions
+
+SECQ-002 e APIQ-002, quanto à configuração concreta do cookie de Session. Complementa DEC-042 e DEC-055 sem decidir o mecanismo de CSRF ou o fluxo OIDC.
+
+## Context
+
+A DEC-055 definiu os atributos mínimos do cookie, mas não seu nome nem o comportamento de `Secure` no desenvolvimento HTTP. A fundação precisa de perfis previsíveis, sem expor configuração arbitrária do nome.
+
+## Decision
+
+Em desenvolvimento e teste por HTTP, usar o perfil:
+
+```text
+name = lgpd_session
+HttpOnly = true
+SameSite = Lax
+Path = /
+Secure = false
+Domain ausente
+```
+
+Em produção por HTTPS, usar o perfil:
+
+```text
+name = __Host-lgpd_session
+HttpOnly = true
+SameSite = Lax
+Path = /
+Secure = true
+Domain ausente
+```
+
+Os dois nomes são definidos pelo projeto. Não criar `SESSION_COOKIE_NAME` arbitrariamente configurável. O backend selecionará o perfil apropriado ao ambiente, e produção deve falhar explicitamente se houver tentativa de usar parâmetros incompatíveis com o perfil seguro.
+
+O frontend não conhece, lê ou persiste o segredo do cookie. O prefixo `__Host-` é hardening adicional imposto pelo navegador para `Secure`, `Path=/` e ausência de `Domain`; não substitui CSRF, CORS, revogação server-side ou os demais requisitos da DEC-055.
+
+## Rationale
+
+Permitir desenvolvimento e testes no HTTP local atual, mantendo em produção um perfil rígido cujo nome e atributos reduzem regressões de configuração e ampliação acidental do cookie para subdomínios ou paths diferentes.
+
+## Consequences
+
+Emissão, leitura e remoção do cookie devem utilizar o perfil selecionado pelo backend. Testes futuros devem cobrir os dois perfis e a falha explícita de configuração insegura em produção.
+
+Esta decisão não implementa o comportamento, não escolhe mecanismo de CSRF, provider OIDC, endpoints de autenticação ou política temporal da Session.
+
+## Affected Documents
+
+09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
+# DEC-060 — Identidade autenticada explícita no boundary e na aplicação
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-24
+
+## Related Questions
+
+APIQ-020, somente quanto à separação entre identidade autenticada e contexto tenant. Complementa DEC-042, DEC-050, DEC-052, DEC-053, DEC-054, DEC-056 e DEC-057 sem alterar seus estados.
+
+## Context
+
+A S3.3 precisa transportar a identidade obtida de uma Session válida até a aplicação sem permitir que dados controlados pelo cliente se tornem identidade confiável e sem acoplar application/domain ao framework HTTP.
+
+## Decision
+
+Adotar a combinação entre propriedade tipada na request HTTP e passagem explícita para application/use cases:
+
+```ts
+type AuthenticatedIdentity = Readonly<{
+  sessionId: string;
+  authenticatedUserId: string;
+}>;
+```
+
+O mecanismo de autenticação cria `AuthenticatedIdentity` somente após validar a Session e atribui temporariamente o valor a `request.authenticatedIdentity`. No boundary HTTP existe um contrato tipado único; preferir decorator tipado para disponibilizá-lo ao controller e evitar casts espalhados. `sessionId` e `authenticatedUserId` nunca vêm de body, query ou headers controlados pelo cliente.
+
+O controller extrai a identidade e a passa explicitamente ao application/use case. Não encaminha `Request` ou `Response` para application/domain. Application/use cases não dependem de NestJS, Express, provider request-scoped ou AsyncLocalStorage para obter a identidade. Repositories não descobrem User, Session ou tenant por contexto HTTP ou estado global; recebem parâmetros e contextos explicitamente.
+
+`AuthenticatedIdentity` não contém Organization, Membership, roles, permissions, Business Units, segredo ou digest da Session, cookie, issuer, subject, perfil ou objetos HTTP. Em especial, ficam fora: `organizationId`, `membershipId`, `roles`, `permissions`, `businessUnitIds`, `sessionSecret`, `tokenDigest`, `cookie`, `issuer`, `subject`, `email`, `name`, `Request` e `Response`.
+
+A S3.4 comporá um novo contexto tenant autorizado sem alterar o significado de `AuthenticatedIdentity`:
+
+```text
+AuthenticatedIdentity
+↓
+resolve_membership(authenticatedUserId, requestedOrganizationId)
+↓
+AuthorizedTenantContext
+```
+
+Roles, scopes e Business Units permanecem fora da identidade global e serão tratados posteriormente no contexto de autorização.
+
+## Rationale
+
+Manter autenticação, seleção tenant e autorização como fases distintas; deixar dependências de segurança visíveis nas assinaturas da aplicação; e evitar contexto implícito, vazamento entre requests e acoplamento das camadas internas ao framework HTTP.
+
+## Consequences
+
+O boundary HTTP precisa de tipagem única e pode oferecer decorator próprio. Testes de application/use cases constroem `AuthenticatedIdentity` diretamente, enquanto testes HTTP comprovam que somente o mecanismo de autenticação a cria e que requests concorrentes não compartilham identidade.
+
+Esta decisão não implementa S3.3, não define Organization autorizada, roles, permissions, contrato de `/me`, provider OIDC ou política temporal da Session.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
+# DEC-061 — Falha uniforme de autenticação da Session
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-24
+
+## Related Questions
+
+SECQ-002 e APIQ-002, quanto ao comportamento HTTP quando a Session não autentica. Complementa DEC-042, DEC-053, DEC-055 e DEC-057 a DEC-060 sem resolver SECQ-004.
+
+## Context
+
+A S3.3 precisa tratar cookie ausente ou inválido e Sessions inexistentes, expiradas ou revogadas sem revelar ao cliente qual condição interna ocorreu, preservando diagnóstico seguro e o perfil de cookie aprovado.
+
+## Decision
+
+Em endpoints protegidos, cookie ausente, cookie malformado/inválido, Session inexistente, Session expirada e Session revogada retornam sempre:
+
+```http
+HTTP/1.1 401 Unauthorized
+```
+
+```json
+{
+  "error": {
+    "code": "AUTHENTICATION_REQUIRED",
+    "message": "Autenticação necessária."
+  }
+}
+```
+
+As causas não são diferenciadas no contrato público. Internamente, a implementação pode usar:
+
+```ts
+type AuthenticationFailureReason =
+  | 'COOKIE_MISSING'
+  | 'COOKIE_INVALID'
+  | 'SESSION_NOT_FOUND'
+  | 'SESSION_EXPIRED'
+  | 'SESSION_REVOKED';
+```
+
+Essas causas podem apoiar testes e observabilidade estruturada segura, mas nunca expõem nem registram `sessionSecret`, valor do cookie, `tokenDigest` ou header `Cookie`.
+
+Quando o cookie está ausente, responder 401 sem emitir remoção. Quando o cookie está presente e é inválido, ou sua Session é inexistente, expirada ou revogada, responder 401 e expirar somente esse cookie no navegador. A resposta não revoga Session server-side nem altera outra Session.
+
+A remoção reutiliza exatamente o perfil da DEC-059, incluindo nome, `Path=/`, `HttpOnly`, `SameSite=Lax`, `Secure` correspondente ao ambiente e ausência de `Domain`, além da expiração apropriada.
+
+Em endpoints públicos, cookie ausente ou inválido não causa 401 apenas por essa condição, cookie inválido não é limpo automaticamente e `AuthenticatedIdentity` nunca é criada sem Session válida.
+
+## Rationale
+
+Manter o contrato público simples e não enumerável, permitir diagnóstico interno sem secrets e remover do navegador apenas credenciais que já não podem autenticar.
+
+## Consequences
+
+O boundary protegido possui uma resposta pública única e causas internas não exportadas. Testes devem cobrir os cinco casos, os headers de remoção nos quatro casos com cookie presente, ausência de remoção quando o cookie falta e a diferença de comportamento em endpoints públicos.
+
+Esta decisão não define login, callback OIDC, logout, provider OIDC, mecanismo de CSRF, política temporal da Session, geração do segredo, `/me` ou tenant context da S3.4.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -3171,6 +3392,10 @@ README.md, 03-DATABASE.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 
 | DEC-055 | Cookie de sessão e baseline CSRF |
 | DEC-056 | Bootstrap PostgreSQL restrito de Membership |
 | DEC-057 | Fronteira PostgreSQL restrita para persistência global de autenticação |
+| DEC-058 | Digest SHA-256 do segredo da Session |
+| DEC-059 | Perfis fixos do cookie de Session por ambiente |
+| DEC-060 | Identidade autenticada explícita no boundary e na aplicação |
+| DEC-061 | Falha uniforme de autenticação da Session |
 
 ---
 

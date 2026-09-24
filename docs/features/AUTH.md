@@ -591,15 +591,14 @@ A estratégia deve considerar revogação/expiração/refresh.
 
 # 27. Cookies
 
-Se autenticação utilizar cookies:
+Para o cookie de Session, a DEC-059 fixa:
 
 ```text
-HttpOnly
-Secure
-SameSite
+desenvolvimento/teste HTTP: lgpd_session; HttpOnly; SameSite=Lax; Path=/; Secure=false; sem Domain
+produção HTTPS: __Host-lgpd_session; HttpOnly; SameSite=Lax; Path=/; Secure=true; sem Domain
 ```
 
-devem ser configurados adequadamente ao ambiente.
+Os nomes não são arbitrariamente configuráveis. O backend seleciona o perfil pelo ambiente e produção falha diante de configuração incompatível. O frontend não conhece, lê ou persiste o segredo. O prefixo `__Host-` não substitui CSRF, CORS ou revogação server-side.
 
 ---
 
@@ -974,7 +973,7 @@ Conforme DEC-057:
 - `resolve_session` retorna somente sessionId, userId, expiresAt e revokedAt;
 - `revoke_session` preserva a primeira revogação e não exclui a Session.
 
-Os repositories chamam exclusivamente esses primitives. Geração de token, digest, duração concreta, inatividade, OIDC e HTTP continuam fora da S3.1.
+Os repositories chamam exclusivamente esses primitives. Pela DEC-058, o backend calcula `tokenDigest = SHA-256(sessionSecret)`; o segredo bruto nunca é persistido e `resolve_session` continua recebendo somente o digest. HMAC, Argon2 e novo secret operacional não são usados nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo, duração concreta, inatividade, OIDC e HTTP continuam pendentes.
 
 Não localizar/vincular User ou fundir contas por e-mail, nem conceder Membership, RoleAssignment ou autorização por e-mail/email_verified. Mudança de e-mail no IdP não altera User ou vínculo ExternalIdentity → User.
 
@@ -1318,6 +1317,19 @@ construir authenticated context
 login/logout quando aplicável
 ```
 
+A DEC-060 define a identidade global mínima:
+
+```ts
+type AuthenticatedIdentity = Readonly<{
+  sessionId: string;
+  authenticatedUserId: string;
+}>;
+```
+
+Após validar a Session, o mecanismo de autenticação atribui temporariamente esse valor a `request.authenticatedIdentity`. Um contrato/decorator tipado o disponibiliza ao controller, que o passa explicitamente a application/use cases. Application/domain não recebem `Request` ou `Response` e não dependem de NestJS, Express, provider request-scoped ou AsyncLocalStorage para obter identidade. Repositories também não descobrem User, Session ou tenant implicitamente.
+
+Organization, Membership, roles, permissions, Business Units, segredo, digest, cookie, identidade externa, perfil e objetos HTTP não pertencem a `AuthenticatedIdentity`. A S3.4 comporá `AuthorizedTenantContext` após `resolve_membership`; autorização será uma estrutura posterior.
+
 ---
 
 # 73. Users module
@@ -1421,6 +1433,8 @@ organization context
 
 permissions carregadas
 ```
+
+Pela DEC-061, endpoints protegidos respondem sempre 401 com `AUTHENTICATION_REQUIRED` para cookie ausente/inválido e Session inexistente, expirada ou revogada. Somente a causa interna tipada distingue os casos. Cookie ausente não é removido; nos outros quatro casos o cookie apresentado é expirado com o perfil da DEC-059, sem revogar Session server-side. Endpoints públicos não retornam 401 nem limpam cookie apenas por ausência ou invalidade.
 
 ---
 

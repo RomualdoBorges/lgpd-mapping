@@ -391,29 +391,41 @@ proteção contra reutilização indevida
 
 O mecanismo depende da estratégia de autenticação.
 
+Pela DEC-060, somente após validar a Session o mecanismo de autenticação cria `AuthenticatedIdentity`, contendo exclusivamente `sessionId` e `authenticatedUserId`. O valor pode existir temporariamente na request HTTP, mas o controller o passa explicitamente à aplicação. Application, domain e repositories não descobrem identidade ou tenant por `Request`, provider request-scoped, AsyncLocalStorage ou estado global. Organization, Membership e autorização permanecem em fases posteriores.
+
+Pela DEC-061, endpoint protegido retorna sempre 401 com `AUTHENTICATION_REQUIRED` para cookie ausente/inválido ou Session inexistente, expirada ou revogada. A causa específica permanece interna e nunca inclui segredo, cookie, digest ou header `Cookie`. Cookie ausente não é removido; cookie presente que não autentica é expirado conforme o perfil da DEC-059, sem revogação server-side. Endpoints públicos não rejeitam ou limpam cookies apenas por ausência ou invalidade.
+
 ---
 
 # 15. Cookies
 
-Para o cookie de Session aprovado em DEC-055:
+Para o cookie de Session aprovado em DEC-055, a DEC-059 fixa dois perfis.
+
+Desenvolvimento e teste em HTTP:
 
 ```text
-HttpOnly
-Secure
-SameSite
-```
-
-devem ser configurados adequadamente.
-
-Exemplo conceitual:
-
-```text
+name = lgpd_session
 HttpOnly = true
-Secure = true em produção
 SameSite = Lax
+Path = /
+Secure = false
+Domain ausente
 ```
 
-Usar também `Path=/`; não configurar `Domain` amplo sem necessidade arquitetural explícita. `Secure` é obrigatório em HTTPS/produção. O segredo bruto não é persistido, conforme DEC-053.
+Produção em HTTPS:
+
+```text
+name = __Host-lgpd_session
+HttpOnly = true
+SameSite = Lax
+Path = /
+Secure = true
+Domain ausente
+```
+
+Os nomes são definidos pelo projeto; não criar `SESSION_COOKIE_NAME` arbitrariamente configurável. O backend seleciona o perfil pelo ambiente e deve falhar explicitamente se produção tentar utilizar parâmetros incompatíveis. O frontend não conhece, lê ou persiste o segredo. `__Host-` acrescenta hardening do navegador, mas não substitui CSRF, CORS, revogação server-side ou os demais requisitos da DEC-055.
+
+O segredo bruto não é persistido, conforme DEC-053. Pela DEC-058, o backend calcula `tokenDigest = SHA-256(sessionSecret)`; somente o digest é persistido e fornecido a `resolve_session`. HMAC, Argon2, novo secret operacional, quantidade de bytes, encoding e geração concreta do segredo não foram adotados nesta etapa.
 
 ---
 

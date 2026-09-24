@@ -226,17 +226,18 @@ A autenticação da aplicação usa Session server-side com cookie opaco (DEC-04
 
 # 8. Contexto autenticado
 
-Após autenticação, o backend deve obter:
+Conforme DEC-060, após validar a Session o boundary HTTP cria somente:
 
-```text
-userId
-organizationId
-roles
-permissions
-businessUnitIds
+```ts
+type AuthenticatedIdentity = Readonly<{
+  sessionId: string;
+  authenticatedUserId: string;
+}>;
 ```
 
-Essas informações devem ser confiáveis e validadas pelo backend.
+O valor fica temporariamente em `request.authenticatedIdentity`, preferencialmente exposto ao controller por decorator tipado. O controller o passa explicitamente à aplicação; application/domain não recebem `Request` ou `Response` e não usam provider request-scoped ou AsyncLocalStorage para descobrir identidade.
+
+Organization, Membership, roles, permissions e Business Units não pertencem a `AuthenticatedIdentity`. O contexto tenant será composto depois da validação de `requestedOrganizationId`; roles, permissions e scopes pertencem à etapa posterior de autorização.
 
 ---
 
@@ -540,6 +541,19 @@ Utilizar:
 ```
 
 quando o usuário não estiver autenticado.
+
+Conforme DEC-061, em endpoint protegido, cookie ausente ou inválido e Session inexistente, expirada ou revogada retornam a mesma resposta pública:
+
+```json
+{
+  "error": {
+    "code": "AUTHENTICATION_REQUIRED",
+    "message": "Autenticação necessária."
+  }
+}
+```
+
+A causa pode ser distinguida somente internamente, sem registrar cookie, segredo, digest ou header `Cookie`. Cookie ausente não gera remoção; cookie presente que não autentica é expirado com o perfil da DEC-059, sem revogar Session server-side. Em endpoint público, ausência ou invalidade do cookie não causa 401 por si só nem remoção automática.
 
 Utilizar:
 

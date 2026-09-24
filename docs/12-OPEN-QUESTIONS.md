@@ -1021,7 +1021,7 @@ ExternalIdentity e Session permanecem globais e sem RLS tenant. Runtime não rec
 
 Runtime e migrator não são membros dessa role. Bootstrap administrativo, migration estrutural, provisionamento privilegiado pós-migration e runtime são etapas separadas.
 
-Essa delimitação não escolhe provider OIDC, algoritmo de digest, política temporal de Session, MFA ou mecanismos HTTP. SECQ-001 permanece IN_ANALYSIS/CRITICAL exclusivamente quanto ao fornecedor gerenciado.
+Essa delimitação não escolhe provider OIDC, política temporal de Session, MFA ou mecanismos HTTP. O algoritmo de digest foi definido posteriormente pela DEC-058. SECQ-001 permanece IN_ANALYSIS/CRITICAL exclusivamente quanto ao fornecedor gerenciado.
 
 
 ## SECQ-002 — Sessão
@@ -1052,7 +1052,7 @@ ou outra
 
 ### Decision
 
-DEC-042: Sessão server-side com cookie opaco. Frontend não administra tokens de autenticação. Backend consulta autorização atual, sem roles/memberships congelados na sessão. DEC-053 define lifecycle estrutural e DEC-055 define cookie e baseline CSRF. Os detalhes ainda não cobertos permanecem em SECQ-004.
+DEC-042: Sessão server-side com cookie opaco. Frontend não administra tokens de autenticação. Backend consulta autorização atual, sem roles/memberships congelados na sessão. DEC-053 define lifecycle estrutural, DEC-055 define cookie e baseline CSRF, e DEC-059 fixa os perfis: `lgpd_session` sem `Secure` para desenvolvimento/teste HTTP e `__Host-lgpd_session` com `Secure` para produção HTTPS; ambos usam `HttpOnly`, `SameSite=Lax`, `Path=/` e nenhum `Domain`. DEC-061 uniformiza em 401/`AUTHENTICATION_REQUIRED` as falhas de autenticação em endpoints protegidos, mantendo a causa somente interna e limpando apenas cookie presente que não autentica. Os detalhes ainda não cobertos permanecem em SECQ-004.
 
 ### Rationale
 
@@ -1109,7 +1109,7 @@ revocation
 
 ### Delimitação — DEC-053
 
-Session global vinculada ao User, com segredo opaco imprevisível armazenado somente por representação não reversível; expiração absoluta, suporte a inatividade, múltiplas sessões, revogação da sessão atual no logout e capacidade futura de revogação geral estão aprovados. SECQ-004 permanece OPEN quanto a durações concretas, renovação, frequência de atualização de lastSeenAt e demais detalhes operacionais não decididos. O algoritmo do digest e o lifecycle global de User também não foram escolhidos.
+Session global vinculada ao User, com segredo opaco imprevisível armazenado somente por representação não reversível; expiração absoluta, suporte a inatividade, múltiplas sessões, revogação da sessão atual no logout e capacidade futura de revogação geral estão aprovados. DEC-058 define `tokenDigest = SHA-256(sessionSecret)`, calculado pelo backend, sem persistir o segredo bruto e sem introduzir HMAC, Argon2 ou novo secret operacional nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo permanecem adiados. SECQ-004 continua OPEN quanto a durações concretas, renovação, frequência de atualização de lastSeenAt e demais detalhes operacionais não decididos; o lifecycle global de User também não foi escolhido.
 
 ## SECQ-005 — Upload malware scanning
 
@@ -3233,7 +3233,7 @@ Depende de `SECQ-001/002`.
 
 ### Decision
 
-DEC-042: transporte de sessão por cookie opaco; frontend não administra tokens de autenticação. DEC-055 define propriedades do cookie e baseline CSRF; detalhes pendentes de lifecycle permanecem em SECQ-004.
+DEC-042: transporte de sessão por cookie opaco; frontend não administra tokens de autenticação. DEC-055 define propriedades do cookie e baseline CSRF; DEC-059 fixa `lgpd_session` para desenvolvimento/teste HTTP e `__Host-lgpd_session` para produção HTTPS, sem nome arbitrariamente configurável. DEC-061 define resposta pública uniforme 401/`AUTHENTICATION_REQUIRED`, causas internas seguras e remoção do cookie presente incapaz de autenticar somente em endpoints protegidos. Detalhes pendentes de lifecycle permanecem em SECQ-004.
 
 ### Rationale
 
@@ -4913,7 +4913,7 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 ### Complemento — DEC-052
 
-A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056, mas não o transporte `X-Organization-Id`, a resolução de Session, a produção de authenticatedUserId ou o AuthenticatedContext no pipeline HTTP. APIQ-020 permanece DECIDED por DEC-043.
+A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056. DEC-060 define a identidade global mínima, criada após Session válida e passada explicitamente à aplicação, sem Organization, Membership, roles, permissions ou Business Units. O transporte `X-Organization-Id`, a resolução HTTP de Session e a composição do contexto tenant ainda não foram implementados. APIQ-020 permanece DECIDED por DEC-043.
 
 ### Complemento — DEC-054
 
