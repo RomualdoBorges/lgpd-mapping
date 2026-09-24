@@ -14,6 +14,7 @@ import {
   findSessionByTokenDigest,
   revokeSession,
 } from '../../src/persistence/auth-repositories.js';
+import { resolveMembership } from '../../src/persistence/membership-bootstrap-repository.js';
 import {
   createTestDatabase,
   A,
@@ -807,8 +808,16 @@ describe('S3.1: persistência global de autenticação restrita', () => {
         has_function_privilege('public',p.oid,'EXECUTE') as public_execute,
         has_function_privilege($1,p.oid,'EXECUTE') as runtime_execute
        from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-       where n.nspname='auth_private' order by p.proname`,
-      [fixture.runtimeRole],
+       where n.nspname='auth_private' and p.proname=any($2) order by p.proname`,
+      [
+        fixture.runtimeRole,
+        [
+          'create_session',
+          'resolve_external_identity',
+          'resolve_session',
+          'revoke_session',
+        ],
+      ],
     );
     expect(functions.rows.map((row) => row.name)).toEqual([
       'create_session',
@@ -886,5 +895,371 @@ describe('S3.1: persistência global de autenticação restrita', () => {
         'absent',
       ),
     ).toBeNull();
+  });
+});
+
+describe('S3.2: bootstrap PostgreSQL restrito de Membership — DEC-056', () => {
+  it('S3.2-01 — role dedicada possui exatamente os atributos restritos', async () => {
+    const role = await fixture.migration.query(
+      "select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname='lgpd_membership_bootstrap'",
+    );
+    expect(role.rows[0]).toEqual({
+      rolcanlogin: false,
+      rolsuper: false,
+      rolbypassrls: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolinherit: false,
+    });
+  });
+
+  it('S3.2-02 — runtime e migrator permanecem roles LOGIN restritas', async () => {
+    for (const roleName of [fixture.runtimeRole, fixture.migrationRole]) {
+      const role = await fixture.migration.query(
+        'select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname=$1',
+        [roleName],
+      );
+      expect(role.rows[0]).toEqual({
+        rolcanlogin: true,
+        rolsuper: false,
+        rolbypassrls: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolinherit: false,
+      });
+    }
+  });
+
+  it('S3.2-03 — runtime e migrator não são membros da role dedicada', async () => {
+    for (const roleName of [fixture.runtimeRole, fixture.migrationRole]) {
+      const result = await fixture.migration.query(
+        "select pg_has_role($1,'lgpd_membership_bootstrap','MEMBER') as member",
+        [roleName],
+      );
+      expect(result.rows[0]?.member).toBe(false);
+    }
+  });
+
+  it('S3.2-04 — executor administrativo pode SET ROLE sem membership persistente', async () => {
+    const result = await fixture.migration.query(
+      `select pg_has_role('lgpd_admin','lgpd_membership_bootstrap','SET') as can_set,
+        exists(
+          select 1 from pg_auth_members am
+          join pg_roles granted on granted.oid=am.roleid
+          join pg_roles member on member.oid=am.member
+          where granted.rolname='lgpd_membership_bootstrap'
+            and member.rolname='lgpd_admin'
+        ) as member`,
+    );
+    expect(result.rows[0]).toEqual({ can_set: true, member: false });
+  });
+
+  it('S3.2-05 — memberships preserva ENABLE e FORCE RLS', async () => {
+    const result = await fixture.migration.query(
+      "select relrowsecurity,relforcerowsecurity from pg_class where oid='public.memberships'::regclass",
+    );
+    expect(result.rows[0]).toEqual({
+      relrowsecurity: true,
+      relforcerowsecurity: true,
+    });
+  });
+
+  it('S3.2-06 — role dedicada não é owner de memberships', async () => {
+    const result = await fixture.migration.query(
+      "select pg_get_userbyid(relowner) as owner from pg_class where oid='public.memberships'::regclass",
+    );
+    expect(result.rows[0]?.owner).not.toBe('lgpd_membership_bootstrap');
+  });
+
+  it('S3.2-07 — tenant_isolation aplica-se explicitamente somente ao runtime', async () => {
+    const result = await fixture.migration.query<{ roles: string }>(
+      "select roles::text as roles from pg_policies where schemaname='public' and tablename='memberships' and policyname='tenant_isolation'",
+    );
+    expect(result.rows[0]?.roles).toBe(`{${fixture.runtimeRole}}`);
+  });
+
+  it('S3.2-08 — policy bootstrap é permissiva, somente SELECT e exclusiva da role dedicada', async () => {
+    const result = await fixture.migration.query<{
+      permissive: string;
+      cmd: string;
+      roles: string;
+    }>(
+      "select permissive,cmd,roles::text as roles from pg_policies where schemaname='public' and tablename='memberships' and policyname='membership_bootstrap_select'",
+    );
+    expect(result.rows[0]).toEqual({
+      permissive: 'PERMISSIVE',
+      cmd: 'SELECT',
+      roles: '{lgpd_membership_bootstrap}',
+    });
+  });
+
+  it('S3.2-09 — policy exige vínculo ativo, User e Organization dos settings internos', async () => {
+    const result = await fixture.migration.query<{ expression: string }>(
+      `select pg_get_expr(p.polqual,p.polrelid) as expression
+       from pg_policy p where p.polrelid='public.memberships'::regclass
+       and p.polname='membership_bootstrap_select'`,
+    );
+    const expression = result.rows[0]?.expression ?? '';
+    expect(expression).toContain('(active = true)');
+    expect(expression).toContain(
+      "current_setting('lgpd.bootstrap_user_id'::text, true)",
+    );
+    expect(expression).toContain(
+      "current_setting('lgpd.bootstrap_organization_id'::text, true)",
+    );
+    expect(expression).toContain('user_id =');
+    expect(expression).toContain('organization_id =');
+  });
+
+  it('S3.2-10 — role dedicada não possui table-level SELECT em memberships', async () => {
+    const result = await fixture.migration.query(
+      "select has_table_privilege('lgpd_membership_bootstrap','public.memberships','SELECT') as allowed",
+    );
+    expect(result.rows[0]?.allowed).toBe(false);
+  });
+
+  it('S3.2-11 — column-level SELECT limita-se às quatro colunas aprovadas', async () => {
+    const result = await fixture.migration.query<{ column_name: string }>(
+      `select column_name from information_schema.column_privileges
+       where table_schema='public' and table_name='memberships'
+       and grantee='lgpd_membership_bootstrap' and privilege_type='SELECT'
+       order by column_name`,
+    );
+    expect(result.rows.map((row) => row.column_name)).toEqual([
+      'active',
+      'id',
+      'organization_id',
+      'user_id',
+    ]);
+  });
+
+  it('S3.2-12 — role dedicada não possui INSERT, UPDATE ou DELETE em memberships', async () => {
+    for (const privilege of ['INSERT', 'UPDATE', 'DELETE']) {
+      const result = await fixture.migration.query(
+        "select has_table_privilege('lgpd_membership_bootstrap','public.memberships',$1) as allowed",
+        [privilege],
+      );
+      expect(result.rows[0]?.allowed).toBe(false);
+    }
+  });
+
+  it('S3.2-13 — role dedicada não acessa tabelas fora de memberships', async () => {
+    for (const table of [
+      'users',
+      'organizations',
+      'external_identities',
+      'sessions',
+    ]) {
+      const result = await fixture.migration.query(
+        "select has_table_privilege('lgpd_membership_bootstrap',$1,'SELECT,INSERT,UPDATE,DELETE') as allowed",
+        [`public.${table}`],
+      );
+      expect(result.rows[0]?.allowed).toBe(false);
+    }
+  });
+
+  it('S3.2-14 — role dedicada possui USAGE mínimo e não retém CREATE', async () => {
+    const result = await fixture.migration.query(
+      `select
+        has_schema_privilege('lgpd_membership_bootstrap','public','USAGE') as public_usage,
+        has_schema_privilege('lgpd_membership_bootstrap','public','CREATE') as public_create,
+        has_schema_privilege('lgpd_membership_bootstrap','auth_private','USAGE') as private_usage,
+        has_schema_privilege('lgpd_membership_bootstrap','auth_private','CREATE') as private_create`,
+    );
+    expect(result.rows[0]).toEqual({
+      public_usage: true,
+      public_create: false,
+      private_usage: true,
+      private_create: false,
+    });
+  });
+
+  it('S3.2-15 — auth_private preserva ownership da DEC-057', async () => {
+    const result = await fixture.migration.query(
+      "select pg_get_userbyid(nspowner) as owner from pg_namespace where nspname='auth_private'",
+    );
+    expect(result.rows[0]?.owner).toBe('lgpd_auth_persistence');
+  });
+
+  it('S3.2-16 — primitive possui owner, SECURITY DEFINER, STRICT e search_path aprovados', async () => {
+    const result = await fixture.migration.query<{
+      owner: string;
+      security_definer: boolean;
+      strict: boolean;
+      volatility: string;
+      config: string[];
+    }>(
+      `select pg_get_userbyid(p.proowner) as owner,p.prosecdef as security_definer,
+        p.proisstrict as strict,p.provolatile as volatility,p.proconfig as config
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+    );
+    expect(result.rows[0]).toEqual({
+      owner: 'lgpd_membership_bootstrap',
+      security_definer: true,
+      strict: true,
+      volatility: 'v',
+      config: ['search_path=pg_catalog, pg_temp'],
+    });
+  });
+
+  it('S3.2-17 — primitive possui parâmetros e retorno mínimos', async () => {
+    const result = await fixture.migration.query(
+      `select pg_get_function_identity_arguments(p.oid) as arguments,
+        pg_get_function_result(p.oid) as result
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+    );
+    expect(result.rows[0]).toEqual({
+      arguments: 'authenticated_user_id uuid, requested_organization_id uuid',
+      result: 'TABLE(membership_id uuid, organization_id uuid)',
+    });
+  });
+
+  it('S3.2-18 — PUBLIC não executa, runtime executa e migrator não recebe EXECUTE', async () => {
+    const result = await fixture.migration.query(
+      `select
+        has_function_privilege('public',p.oid,'EXECUTE') as public_execute,
+        has_function_privilege($1,p.oid,'EXECUTE') as runtime_execute,
+        has_function_privilege($2,p.oid,'EXECUTE') as migrator_execute
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+      [fixture.runtimeRole, fixture.migrationRole],
+    );
+    expect(result.rows[0]).toEqual({
+      public_execute: false,
+      runtime_execute: true,
+      migrator_execute: false,
+    });
+  });
+
+  it('S3.2-19 — vínculo próprio ativo retorna somente os dois IDs', async () => {
+    const resolved = await resolveMembership(fixture.database, U, A);
+    expect(resolved).toEqual({ membershipId: M_A, organizationId: A });
+    expect(Object.keys(resolved ?? {}).sort()).toEqual([
+      'membershipId',
+      'organizationId',
+    ]);
+  });
+
+  it('S3.2-20 — Membership inexistente retorna ausência', async () => {
+    expect(
+      await resolveMembership(fixture.database, randomUUID(), A),
+    ).toBeNull();
+  });
+
+  it('S3.2-21 — Membership inativa retorna a mesma ausência', async () => {
+    await tenant(A, (tx) =>
+      tx.execute(sql`update memberships set active=false where id=${M_A}`),
+    );
+    expect(await resolveMembership(fixture.database, U, A)).toBeNull();
+  });
+
+  it('S3.2-22 — Organization inexistente retorna a mesma ausência', async () => {
+    expect(
+      await resolveMembership(fixture.database, U, randomUUID()),
+    ).toBeNull();
+  });
+
+  it('S3.2-23 — User diferente não obtém Membership da Organization', async () => {
+    expect(
+      await resolveMembership(fixture.database, randomUUID(), A),
+    ).toBeNull();
+  });
+
+  it('S3.2-24 — Organization solicitada seleciona somente o vínculo correspondente', async () => {
+    expect(await resolveMembership(fixture.database, U, B)).toEqual({
+      membershipId: M_B,
+      organizationId: B,
+    });
+  });
+
+  it('S3.2-25 — parâmetros NULL produzem zero linhas por STRICT', async () => {
+    const result = await fixture.runtime.query(
+      'select * from auth_private.resolve_membership(null,$1)',
+      [A],
+    );
+    expect(result.rows).toHaveLength(0);
+  });
+
+  it('S3.2-26 — settings falsificados não permitem leitura direta sem tenant autorizado', async () => {
+    const client = await fixture.runtime.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        "select set_config('lgpd.bootstrap_user_id',$1,true),set_config('lgpd.bootstrap_organization_id',$2,true)",
+        [U, A],
+      );
+      expect(
+        (
+          await client.query(
+            'select id,organization_id,user_id,active from public.memberships',
+          )
+        ).rows,
+      ).toHaveLength(0);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+  });
+
+  it('S3.2-27 — primitive restaura settings anteriores e não deixa resíduo no pool', async () => {
+    const client = await fixture.runtime.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        "select set_config('lgpd.bootstrap_user_id','anterior-user',true),set_config('lgpd.bootstrap_organization_id','anterior-org',true)",
+      );
+      expect(
+        (
+          await client.query(
+            'select * from auth_private.resolve_membership($1,$2)',
+            [U, A],
+          )
+        ).rows,
+      ).toEqual([{ membership_id: M_A, organization_id: A }]);
+      const restored = await client.query(
+        "select current_setting('lgpd.bootstrap_user_id',true) as user_id,current_setting('lgpd.bootstrap_organization_id',true) as organization_id",
+      );
+      expect(restored.rows[0]).toEqual({
+        user_id: 'anterior-user',
+        organization_id: 'anterior-org',
+      });
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
+    const clean = await fixture.runtime.query(
+      "select nullif(current_setting('lgpd.bootstrap_user_id',true),'') as user_id,nullif(current_setting('lgpd.bootstrap_organization_id',true),'') as organization_id",
+    );
+    expect(clean.rows[0]).toEqual({ user_id: null, organization_id: null });
+  });
+
+  it('S3.2-28 — provisionamento repetido mantém uma policy, uma function e primitives DEC-057 intactos', async () => {
+    const policies = await fixture.migration.query(
+      "select count(*)::int as count from pg_policy where polrelid='public.memberships'::regclass and polname='membership_bootstrap_select'",
+    );
+    expect(policies.rows[0]?.count).toBe(1);
+    const functions = await fixture.migration.query<{ name: string }>(
+      "select proname as name from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth_private' order by proname",
+    );
+    expect(functions.rows.map((row) => row.name)).toEqual([
+      'create_session',
+      'resolve_external_identity',
+      'resolve_membership',
+      'resolve_session',
+      'revoke_session',
+    ]);
+    await fixture.runtime.query('set search_path = public, pg_temp');
+    expect(await resolveMembership(fixture.database, U, A)).toEqual({
+      membershipId: M_A,
+      organizationId: A,
+    });
   });
 });

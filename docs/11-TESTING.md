@@ -70,7 +70,11 @@ Devem comprovar:
 - revogação idempotente preservando o primeiro timestamp;
 - ausência de DELETE;
 - migrations em banco vazio e journal com três migrations;
-- regressão integral dos dez cenários DEC-045/046 do Slice 2. DEC-056 define bootstrap da Membership própria por função SECURITY DEFINER, owner NOLOGIN e policy restrita sob FORCE RLS; sua implementação exige testes reais de retorno mínimo, ausência indistinguível, grants, policies, chamada direta, search_path e regressão RLS. DEC-053 exige validar expiração/revogação e ausência de segredo bruto persistido; DEC-054 exige validação independente de `X-Organization-Id` em requests tenant-bound; DEC-055 exige cookie seguro e proteção CSRF para mutações. Estes detalhes ainda não estão implementados.
+- regressão integral dos dez cenários DEC-045/046 do Slice 2.
+
+A S3.2 valida o bootstrap PostgreSQL restrito de Membership com 28 cenários da DEC-056: propriedades e separação das roles; grants mínimos; ausência de acesso às tabelas proibidas; ENABLE/FORCE RLS; policies distintas para runtime e bootstrap; retorno mínimo para vínculo ativo; ausência indistinguível para vínculo ausente, inativo ou Organization inexistente; rejeição de outro User; no máximo uma linha; chamada exclusiva pelo repository; ausência de leitura direta obtida por settings; isolamento por `search_path`; criação sob owner dedicado; CREATE temporário removido; PUBLIC sem EXECUTE; runtime com EXECUTE específico; e provisionamento idempotente e transacional. As regressões de DEC-045/046 e DEC-057 permanecem aprovadas.
+
+O estado validado possui 10 testes unitários e 52 testes de integração em PostgreSQL real. Esses testes não afirmam que o pipeline HTTP da DEC-052 esteja pronto: resolução de Session no request, produção do authenticatedUserId, `X-Organization-Id`, AuthenticatedContext completo e autorização por RoleAssignment/BusinessUnit continuam fora da S3.2. DEC-053 ainda exige integrar o lifecycle ao fluxo HTTP; DEC-054 exige validação independente do header em requests tenant-bound; DEC-055 exige cookie seguro e proteção CSRF para mutações.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 

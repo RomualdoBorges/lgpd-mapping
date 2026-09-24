@@ -2666,6 +2666,10 @@ Impedir que um contexto solicitado pelo cliente seja elevado a tenant autorizado
 
 A solução PostgreSQL concreta para o bootstrap ainda precisa ser desenhada de modo compatível com constraints tenant-aware, FORCE RLS, runtime restrito e least privilege. Esta decisão aprova boundary e propriedades de segurança, não escolhe SQL, SECURITY DEFINER ou alternativa, grants específicos, lifecycle de User/Session, provider OIDC, MFA, transporte HTTP de requestedOrganizationId, endpoint de descoberta das próprias Organizations, permission matrix, ADMIN/PLATFORM_ADMIN ou cache de autorização. Não autoriza schema, migration, grants, policies, repositories ou endpoints nesta etapa.
 
+## Implementation Status — S3.2
+
+A S3.2 implementou somente a fundação PostgreSQL necessária à fase restrita de resolução de Membership: `auth_private.resolve_membership` e seu repository retornam membershipId + organizationId para a Membership ativa do par exato User + Organization. A autenticação HTTP, a resolução de Session no request, a produção de authenticatedUserId, o transporte de requestedOrganizationId, o AuthenticatedContext completo e a autorização por RoleAssignment/BusinessUnit continuam não implementados.
+
 ## Affected Documents
 
 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 03-DATABASE.md, 09-SECURITY.md, features/AUTH.md, features/ORGANIZATIONS.md.
@@ -2807,6 +2811,12 @@ Provisionar a role dedicada administrativamente, de forma controlada e reproduz�
 Testes futuros com PostgreSQL real devem comprovar: runtime sem tenant não lê Memberships diretamente; runtime com tenant permanece na policy normal; owner sem BYPASSRLS/ownership; PUBLIC sem EXECUTE; runtime com EXECUTE somente no primitive privilegiado necessário; vínculo ativo próprio retorna apenas os dois IDs; vínculo ausente/inativo e Organization inexistente retornam ausência indistinguível; parâmetros não retornam Membership de outro User nem mais de uma linha; settings de bootstrap não tornam a policy aplicável ao runtime fora da função; search_path/object shadowing não alteram comportamento; regressão integral de RLS/constraints do Slice 2; pool, commit e rollback sem contexto residual; runtime sem SUPERUSER/BYPASSRLS/ownership; credenciais migration/admin ausentes do runtime; cliente não substitui authenticatedUserId; Session ausente/inválida não inicia bootstrap; `X-Organization-Id` só vira tenant autorizado após resultado positivo.
 
 Esta decisão não define schema completo de Session, digest, duração/renovação, provider OIDC, MFA, permission matrix, autorização funcional, endpoints/respostas HTTP finais, proteção das demais tabelas globais, política administrativa definitiva de provisionamento ou restante do Slice 3. Não autoriza implementação nesta etapa.
+
+## Implementation Status — S3.2
+
+A S3.2 implementou `lgpd_membership_bootstrap` como role NOLOGIN dedicada e `auth_private.resolve_membership` como primitive `SECURITY DEFINER` de retorno mínimo. O provisionamento administrativo, separado das migrations, conserva ENABLE/FORCE RLS em `memberships`, direciona `tenant_isolation` ao runtime, cria `membership_bootstrap_select` exclusivamente para a role dedicada e concede apenas SELECT nas colunas necessárias. A function é criada sob `SET LOCAL ROLE`, com CREATE temporário e transacional em `auth_private`; runtime e migrator não são membros da role, PUBLIC não possui EXECUTE, runtime recebe somente o EXECUTE específico e nenhum CREATE persiste. Nenhuma migration 0003 foi criada.
+
+O repository chama exclusivamente a primitive. Os 28 cenários previstos para a DEC-056 foram aprovados em PostgreSQL real, juntamente com as regressões de DEC-045/046 e DEC-057. O estado validado possui 10 testes unitários e 52 testes de integração. Isso não implementa o pipeline HTTP ou as demais matérias expressamente excluídas pela Decision.
 
 ## Affected Documents
 

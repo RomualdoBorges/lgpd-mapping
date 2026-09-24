@@ -3190,7 +3190,7 @@ O bootstrap de Membership anterior ao contexto tenant ocorre apenas por operaç�
 
 ### Complemento — DEC-056
 
-O mecanismo aprovado é função PostgreSQL SECURITY DEFINER de retorno mínimo, com owner NOLOGIN dedicado sujeito a FORCE RLS, policy SELECT de bootstrap exclusiva dessa role e policy tenant normal de `memberships` limitada às roles tenant pertinentes, evitando OR que amplie runtime. Runtime recebe EXECUTE específico, não é membro da role dedicada e conserva grants tenant normais sob RLS. A função só recebe authenticatedUserId produzido pelo backend após Session válida; a solicitação da Organization continua sem autoridade até resultado positivo. Role, função, grants e policies ainda não foram implementados; o procedimento administrativo exato fica para o slice.
+O mecanismo aprovado é função PostgreSQL SECURITY DEFINER de retorno mínimo, com owner NOLOGIN dedicado sujeito a FORCE RLS, policy SELECT de bootstrap exclusiva dessa role e policy tenant normal de `memberships` limitada às roles tenant pertinentes, evitando OR que amplie runtime. Na S3.2, role, função, grants e policies foram implementados por provisionamento administrativo separado das migrations. `auth_private.resolve_membership` retorna somente membershipId + organizationId para a Membership ativa do par exato User + Organization; o repository usa exclusivamente essa primitive. Runtime recebe EXECUTE específico, não é membro da role dedicada e conserva grants tenant normais sob RLS. Isso implementa apenas a fundação PostgreSQL: authenticatedUserId ainda deve ser produzido pelo backend após Session válida, e a Organization solicitada continua sem autoridade até resultado positivo no futuro pipeline HTTP. O estado e a prioridade desta questão não mudam.
 
 ### Complemento — DEC-057
 
@@ -4913,7 +4913,7 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 ### Complemento — DEC-052
 
-A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. DEC-056 define o mecanismo SQL conceitual restrito; sua implementação permanece pendente. APIQ-020 permanece DECIDED por DEC-043.
+A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056, mas não o transporte `X-Organization-Id`, a resolução de Session, a produção de authenticatedUserId ou o AuthenticatedContext no pipeline HTTP. APIQ-020 permanece DECIDED por DEC-043.
 
 ### Complemento — DEC-054
 

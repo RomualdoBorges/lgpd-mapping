@@ -92,15 +92,30 @@ export async function createTestDatabase() {
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='lgpd_auth_persistence') THEN
         CREATE ROLE lgpd_auth_persistence NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
       END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='lgpd_membership_bootstrap') THEN
+        CREATE ROLE lgpd_membership_bootstrap NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT;
+      END IF;
     END $$`);
-    const authRole = await admin.query(
-      "select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname='lgpd_auth_persistence'",
-    );
-    if (
-      authRole.rows.length !== 1 ||
-      Object.values(authRole.rows[0]).some((value) => value !== false)
-    )
-      throw new Error('Role administrativa de autenticação inválida.');
+    for (const [roleName, message] of [
+      [
+        'lgpd_auth_persistence',
+        'Role administrativa de autenticação inválida.',
+      ],
+      [
+        'lgpd_membership_bootstrap',
+        'Role de bootstrap de Membership inválida.',
+      ],
+    ]) {
+      const role = await admin.query(
+        'select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname=$1',
+        [roleName],
+      );
+      if (
+        role.rows.length !== 1 ||
+        Object.values(role.rows[0]).some((value) => value !== false)
+      )
+        throw new Error(message);
+    }
     await admin.query(`CREATE DATABASE "${name}" OWNER "lgpd_admin"`);
     created = true;
     // CREATE DATABASE cannot share a transaction with its marker. If marking fails,
@@ -125,11 +140,7 @@ export async function createTestDatabase() {
       migration,
       name,
     );
-    await preparation.query(
-      "select set_config('lgpd.auth_runtime_role',$1,false), set_config('lgpd.auth_migration_role',$2,false)",
-      [runtimeConfig.user, migrationConfig.user],
-    );
-    const provisioning = readFileSync(
+    const authProvisioning = readFileSync(
       fileURLToPath(
         new URL(
           '../../../../infra/postgres/provision-auth-persistence.sql',
@@ -138,7 +149,31 @@ export async function createTestDatabase() {
       ),
       'utf8',
     );
-    await preparation.query(provisioning);
+    const membershipProvisioning = readFileSync(
+      fileURLToPath(
+        new URL(
+          '../../../../infra/postgres/provision-membership-bootstrap.sql',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    );
+    const provisioner = await preparation.connect();
+    try {
+      await provisioner.query(
+        "select set_config('lgpd.auth_runtime_role',$1,false), set_config('lgpd.auth_migration_role',$2,false)",
+        [runtimeConfig.user, migrationConfig.user],
+      );
+      await provisioner.query(authProvisioning);
+      await provisioner.query(
+        "select set_config('lgpd.membership_runtime_role',$1,false), set_config('lgpd.membership_migration_role',$2,false)",
+        [runtimeConfig.user, migrationConfig.user],
+      );
+      await provisioner.query(membershipProvisioning);
+      await provisioner.query(membershipProvisioning);
+    } finally {
+      provisioner.release();
+    }
     return {
       name,
       concurrency,
@@ -164,7 +199,7 @@ export async function createTestDatabase() {
           ROLE,
           'MANAGER',
         ]);
-        const client = await migration.connect();
+        const client = await runtime.connect();
         try {
           for (const [org, bu, membership, grant] of [
             [A, BU_A, M_A, GRANT_A],
