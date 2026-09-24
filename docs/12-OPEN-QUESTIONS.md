@@ -1001,6 +1001,28 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 Qual fornecedor gerenciado OIDC será contratado/utilizado? Auth0 permanece somente candidato.
 
+### Delimitação do D1 — DEC-050
+
+User, ExternalIdentity, Membership e as concessões necessárias são provisionados de forma controlada antes do login. A autenticação resolve o User pela combinação validada issuer + subject da ExternalIdentity existente; login não cria User, Membership, RoleAssignment ou Organization, não concede BusinessUnit e não associa identidades por e-mail. Signup público, fluxo completo de convites, account linking self-service e merge automático de contas ficam fora deste Slice.
+
+Esta delimitação responde ao comportamento de provisionamento no login, sem escolher fornecedor OIDC ou resolver política de nome/e-mail/claims, lifecycle de Session ou proteção/bootstrap das tabelas globais. SECQ-001 continua IN_ANALYSIS, com prioridade CRITICAL, quanto ao fornecedor gerenciado.
+
+### Identidade externa e perfil no D1 — DEC-051
+
+ExternalIdentity é vinculada ao User global e identificada por issuer + subject, com unicidade global desse par; uma identidade externa não pode pertencer a dois Users. Campos mínimos conceituais: id, userId, issuer, subject, createdAt e updatedAt, se coerente com o padrão estrutural existente, sem autorização de schema/migration.
+
+Nome/e-mail do User vêm do provisionamento controlado da DEC-050. name, email e email_verified externos não são autoridade de identidade ou autorização: não associar/fundir Users por e-mail, alterar vínculo por mudança de e-mail ou conceder acesso por esses claims. Não sincronizar name/email automaticamente no login; ausência desses claims não impede autenticação de ExternalIdentity previamente provisionada e válida. Mudança de e-mail no IdP não altera User ou vínculo.
+
+O modelo pode permitir várias ExternalIdentities por User, mas criação self-service de identidade adicional, account linking, merge de contas, fluxo de segunda identidade e política administrativa definitiva ficam fora do Slice 3. Provider, MFA, lifecycle de User/Session, armazenamento de tokens do IdP, proteção/bootstrap global, onboarding definitivo e atualização administrativa de perfil continuam pendentes. SECQ-001 permanece IN_ANALYSIS/CRITICAL quanto ao fornecedor.
+
+### Delimitação de persistência global — DEC-057
+
+ExternalIdentity e Session permanecem globais e sem RLS tenant. Runtime não recebe grants diretos nessas tabelas nem SELECT em users. O acesso ocorre somente pelos quatro primitives SECURITY DEFINER de retorno mínimo pertencentes à role NOLOGIN dedicada `lgpd_auth_persistence`.
+
+Runtime e migrator não são membros dessa role. Bootstrap administrativo, migration estrutural, provisionamento privilegiado pós-migration e runtime são etapas separadas.
+
+Essa delimitação não escolhe provider OIDC, algoritmo de digest, política temporal de Session, MFA ou mecanismos HTTP. SECQ-001 permanece IN_ANALYSIS/CRITICAL exclusivamente quanto ao fornecedor gerenciado.
+
 
 ## SECQ-002 — Sessão
 
@@ -1030,7 +1052,7 @@ ou outra
 
 ### Decision
 
-DEC-042: Sessão server-side com cookie opaco. Frontend não administra tokens de autenticação. Backend consulta autorização atual, sem roles/memberships congelados na sessão. Expiração, renovação e revogação detalhadas permanecem em SECQ-004.
+DEC-042: Sessão server-side com cookie opaco. Frontend não administra tokens de autenticação. Backend consulta autorização atual, sem roles/memberships congelados na sessão. DEC-053 define lifecycle estrutural e DEC-055 define cookie e baseline CSRF. Os detalhes ainda não cobertos permanecem em SECQ-004.
 
 ### Rationale
 
@@ -1084,6 +1106,10 @@ revocation
 ?
 
 ---
+
+### Delimitação — DEC-053
+
+Session global vinculada ao User, com segredo opaco imprevisível armazenado somente por representação não reversível; expiração absoluta, suporte a inatividade, múltiplas sessões, revogação da sessão atual no logout e capacidade futura de revogação geral estão aprovados. SECQ-004 permanece OPEN quanto a durações concretas, renovação, frequência de atualização de lastSeenAt e demais detalhes operacionais não decididos. O algoritmo do digest e o lifecycle global de User também não foram escolhidos.
 
 ## SECQ-005 — Upload malware scanning
 
@@ -3158,6 +3184,20 @@ Banco, arquitetura, segurança, testes e plano de implementação harmonizados. 
 
 2026-09-18
 
+### Complemento — DEC-052
+
+O bootstrap de Membership anterior ao contexto tenant ocorre apenas por operação restrita ao User autenticado e à Organization solicitada; o resultado é a Membership própria ativa ou ausência, sem enumeração ou leitura irrestrita. Apenas após confirmação o backend usa withTenant(authorizedOrganizationId), mantendo RLS/FORCE RLS e runtime restrito; concessões e áreas são carregadas no tenant autorizado. DEC-045/046 não foram alteradas.
+
+### Complemento — DEC-056
+
+O mecanismo aprovado é função PostgreSQL SECURITY DEFINER de retorno mínimo, com owner NOLOGIN dedicado sujeito a FORCE RLS, policy SELECT de bootstrap exclusiva dessa role e policy tenant normal de `memberships` limitada às roles tenant pertinentes, evitando OR que amplie runtime. Runtime recebe EXECUTE específico, não é membro da role dedicada e conserva grants tenant normais sob RLS. A função só recebe authenticatedUserId produzido pelo backend após Session válida; a solicitação da Organization continua sem autoridade até resultado positivo. Role, função, grants e policies ainda não foram implementados; o procedimento administrativo exato fica para o slice.
+
+### Complemento — DEC-057
+
+ExternalIdentity e Session não recebem RLS tenant porque são entidades globais e não possuem organization_id. Sua proteção PostgreSQL utiliza runtime sem grants diretos, primitives SECURITY DEFINER restritos, owner NOLOGIN dedicado e retornos mínimos.
+
+Isso não reduz nem substitui RLS/FORCE RLS nas tabelas tenant-bound e não altera DEC-046 ou DEC-056.
+
 
 # 21. API
 
@@ -3193,7 +3233,7 @@ Depende de `SECQ-001/002`.
 
 ### Decision
 
-DEC-042: transporte de sessão por cookie opaco; frontend não administra tokens de autenticação. A política detalhada permanece em SECQ-004.
+DEC-042: transporte de sessão por cookie opaco; frontend não administra tokens de autenticação. DEC-055 define propriedades do cookie e baseline CSRF; detalhes pendentes de lifecycle permanecem em SECQ-004.
 
 ### Rationale
 
@@ -4871,6 +4911,14 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 2026-09-18
 
+### Complemento — DEC-052
+
+A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. DEC-056 define o mecanismo SQL conceitual restrito; sua implementação permanece pendente. APIQ-020 permanece DECIDED por DEC-043.
+
+### Complemento — DEC-054
+
+Requests tenant-bound usam `X-Organization-Id` como requestedOrganizationId e são rejeitados se o header faltar. Endpoints globais de autenticação/contexto anteriores ao tenant não o exigem. Não há seleção implícita da última Organization nem autoridade tenant armazenada na Session; cada request, inclusive concorrente, é validado independentemente.
+
 
 ## APIQ-021 — Granularidade da API do wizard
 
@@ -5829,6 +5877,10 @@ self-service
 
 integração comercial
 ```
+
+### Delimitação do D1 — DEC-050
+
+O login não cria Organization. No D1, User, ExternalIdentity, Membership e as concessões necessárias existem antes do login por provisionamento controlado. DEC-050 não define quem cria Organization nem o mecanismo operacional desse provisionamento; ORGQ-004 permanece OPEN, com prioridade HIGH, para essas decisões.
 
 ---
 

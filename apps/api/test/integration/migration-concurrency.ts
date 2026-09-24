@@ -99,14 +99,23 @@ export async function verifyConcurrentMigrations(
     await gate.query(
       "select pg_advisory_unlock(hashtext('lgpd:structural-migrations'))",
     );
-    const protectedRows = await until(
-      executors,
-      (rows) =>
-        rows.length === 2 &&
-        rows.filter((row) => row.advisory_granted && row.bootstrap_waiting)
-          .length === 1 &&
-        rows.filter((row) => row.advisory_waiting).length === 1,
-    );
+    let protectedRows;
+    try {
+      protectedRows = await until(
+        executors,
+        (rows) =>
+          rows.length === 2 &&
+          rows.filter((row) => row.advisory_granted && row.bootstrap_waiting)
+            .length === 1 &&
+          rows.filter((row) => row.advisory_waiting).length === 1,
+      );
+    } catch (error) {
+      const results = await Promise.all(completions);
+      throw new Error(
+        `Estado concorrente não observado: ${results.map((result) => result.output).join(' | ')}`,
+        { cause: error },
+      );
+    }
     const empty = await gate.query(
       "select to_regclass('public.__drizzle_migrations') as journal,to_regclass('public.organizations') as organization",
     );
@@ -119,20 +128,24 @@ export async function verifyConcurrentMigrations(
         result.code !== 0 ||
         !result.output.includes('Migrations estruturais aplicadas.')
       )
-        throw new Error('Executor real de migration não terminou com sucesso.');
+        throw new Error(
+          `Executor real de migration não terminou com sucesso: ${result.output}`,
+        );
     }
-    const expectedTimes = [1789754035408, 1789754043586].map(String);
+    const expectedTimes = [1789754035408, 1789754043586, 1790249267053].map(
+      String,
+    );
     // Assert the exact versioned migrations, without selecting or applying SQL ourselves.
     const entries = await migration.query<{ created_at: string }>(
       'select created_at from public.__drizzle_migrations order by created_at',
     );
     if (
-      entries.rows.length !== 2 ||
+      entries.rows.length !== 3 ||
       JSON.stringify(entries.rows.map((row) => row.created_at)) !==
         JSON.stringify(expectedTimes)
     )
       throw new Error(
-        'Journal deve registrar exatamente as duas migrations versionadas.',
+        'Journal deve registrar exatamente as três migrations versionadas.',
       );
     return {
       processIds: children.map((child) => child.pid),

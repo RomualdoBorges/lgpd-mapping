@@ -47,7 +47,27 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity e Session são globais, sem organization_id artificial nem acesso runtime irrestrito.
+
+DEC-057 define a fronteira PostgreSQL de ExternalIdentity e Session:
+
+```text
+administrative bootstrap
+→ cria lgpd_auth_persistence
+
+structural migration
+→ cria tabelas, FKs, constraints e índices
+
+administrative auth provisioning
+→ valida a role e configura auth_private/functions/grants
+
+runtime
+→ executa somente os primitives concedidos
+```
+
+`lgpd_auth_persistence` é NOLOGIN e não é concedida ao runtime ou migrator. Runtime não possui DML direto em external_identities, sessions ou users. PUBLIC não possui acesso ao schema privado ou EXECUTE nas functions.
+
+As tabelas permanecem sem RLS porque não são tenant-bound. Isso não altera RLS/FORCE RLS das tabelas tenant-bound. DEC-052 aprovou o bootstrap restrito: authenticatedUserId + requestedOrganizationId consulta somente a Membership própria ativa ou ausência; apenas então authorizedOrganizationId pode chegar a withTenant(), onde concessões/scopes são carregados sob RLS. DEC-056 aprovou função SECURITY DEFINER com owner NOLOGIN dedicado sujeito a FORCE RLS, policy bootstrap somente para essa role e EXECUTE específico para runtime; não há leitura irrestrita ou credencial de migration/admin no runtime. Role, função, grants e policies ainda não foram implementados; proteção específica das demais tabelas globais e provisionamento concreto permanecem pendentes.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -369,7 +389,7 @@ O mecanismo depende da estratégia de autenticação.
 
 # 15. Cookies
 
-Se autenticação utilizar cookie:
+Para o cookie de Session aprovado em DEC-055:
 
 ```text
 HttpOnly
@@ -384,10 +404,10 @@ Exemplo conceitual:
 ```text
 HttpOnly = true
 Secure = true em produção
-SameSite = Lax/Strict conforme arquitetura
+SameSite = Lax
 ```
 
-A escolha final de `SameSite` depende do fluxo de autenticação.
+Usar também `Path=/`; não configurar `Domain` amplo sem necessidade arquitetural explícita. `Secure` é obrigatório em HTTPS/produção. O segredo bruto não é persistido, conforme DEC-053.
 
 ---
 
@@ -729,7 +749,7 @@ Não confiar no HTML enviado pelo cliente.
 
 # 35. CSRF
 
-Se autenticação utilizar cookies enviados automaticamente pelo navegador, proteção CSRF deve ser considerada.
+Operações mutáveis autenticadas por cookie exigem proteção explícita contra CSRF (DEC-055); SameSite=Lax sozinho não é suficiente.
 
 Possíveis mecanismos:
 
@@ -739,7 +759,7 @@ CSRF token
 Origin validation
 ```
 
-A estratégia definitiva depende da arquitetura de autenticação.
+Validar origem confiável e empregar mecanismo CSRF apropriado; a técnica concreta continua para o desenho técnico.
 
 ---
 

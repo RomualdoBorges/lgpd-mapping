@@ -47,7 +47,30 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial.
+
+Os testes da S3.1 devem executar em banco PostgreSQL exclusivo nesta ordem:
+
+```text
+provisionamento administrativo da role
+→ migrations estruturais
+→ provisionamento administrativo de auth_private/primitives
+→ testes com runtime restrito
+```
+
+Devem comprovar:
+
+- schema, FKs, unicidades e múltiplas identidades/sessões;
+- ausência de token bruto e de campos tenant/autorização;
+- ausência de DML direto do runtime;
+- propriedades e memberships da role dedicada;
+- ownership e privilégios de auth_private;
+- SECURITY DEFINER, search_path e EXECUTE dos quatro primitives;
+- retornos mínimos sem token_digest;
+- revogação idempotente preservando o primeiro timestamp;
+- ausência de DELETE;
+- migrations em banco vazio e journal com três migrations;
+- regressão integral dos dez cenários DEC-045/046 do Slice 2. DEC-056 define bootstrap da Membership própria por função SECURITY DEFINER, owner NOLOGIN e policy restrita sob FORCE RLS; sua implementação exige testes reais de retorno mínimo, ausência indistinguível, grants, policies, chamada direta, search_path e regressão RLS. DEC-053 exige validar expiração/revogação e ausência de segredo bruto persistido; DEC-054 exige validação independente de `X-Organization-Id` em requests tenant-bound; DEC-055 exige cookie seguro e proteção CSRF para mutações. Estes detalhes ainda não estão implementados.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 

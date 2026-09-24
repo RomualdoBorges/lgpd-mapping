@@ -30,7 +30,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente. Pela DEC-052, essa solicitação é apenas requestedOrganizationId: a consulta restrita à Membership própria ativa do User autenticado deve preceder authorizedOrganizationId e withTenant(); concessões e scopes são carregados no contexto tenant, sem congelá-los na sessão. DEC-056 definiu função SECURITY DEFINER restrita, com authenticatedUserId produzido pelo backend após Session válida; a implementação ainda está pendente. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco, RLS ou herança hierárquica. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -551,7 +551,7 @@ Não adicionar SDK antes da decisão.
 
 # 24. Sessão
 
-SECQ-002 foi decidida por DEC-042: sessão server-side com cookie opaco. Frontend não administra tokens; backend consulta autorização atual. Expiração, renovação e revogação detalhadas permanecem em SECQ-004. APIQ-002 está integralmente coberta pelo transporte escolhido.
+SECQ-002 foi decidida por DEC-042: sessão server-side com cookie opaco. DEC-053 define segredo protegido, expiração absoluta, suporte à inatividade e revogação; DEC-055 define propriedades do cookie e proteção CSRF. Frontend não administra tokens; backend consulta autorização atual. Durações, renovação e detalhes operacionais permanecem em SECQ-004. APIQ-002 está integralmente coberta pelo transporte escolhido.
 
 ---
 
@@ -961,35 +961,32 @@ quando apropriado.
 
 ---
 
-# 49. E-mail
+# 49. E-mail e identidade no D1
 
-E-mail pode funcionar como identificador visual/login.
+Conforme DEC-051, nome e e-mail não são chaves de identidade. User é identificado internamente por UUID; ExternalIdentity é vinculada a User pela combinação validada issuer + subject, globalmente única.
 
-Não assumir que será chave primária.
+Na S3.1, ExternalIdentity e Session são persistidas como entidades globais. Runtime não consulta suas tabelas diretamente.
 
-Utilizar:
+Conforme DEC-057:
 
-```text
-UUID
-```
+- `resolve_external_identity` retorna somente userId;
+- `create_session` cria a estrutura mínima e não retorna token_digest;
+- `resolve_session` retorna somente sessionId, userId, expiresAt e revokedAt;
+- `revoke_session` preserva a primeira revogação e não exclui a Session.
 
-para identificação interna.
+Os repositories chamam exclusivamente esses primitives. Geração de token, digest, duração concreta, inatividade, OIDC e HTTP continuam fora da S3.1.
+
+Não localizar/vincular User ou fundir contas por e-mail, nem conceder Membership, RoleAssignment ou autorização por e-mail/email_verified. Mudança de e-mail no IdP não altera User ou vínculo ExternalIdentity → User.
 
 ---
 
-# 50. Normalização de e-mail
+# 50. Perfil e claims no D1
 
-Se e-mail for utilizado como identificador:
+Nome/e-mail necessários ao modelo interno são fornecidos pelo provisionamento controlado (DEC-050). Claims name, email e email_verified são atributos externos de perfil, não autoridade de identidade ou autorização.
 
-```text
-trim
-normalização adequada
-unicidade conforme modelo
-```
+Não sincronizar name/email automaticamente a cada login. Sua ausência nos claims não impede autenticação de ExternalIdentity previamente provisionada e válida. DEC-051 não decide atualização administrativa de perfil.
 
-devem ser tratados.
-
-A regra de unicidade depende do modelo de identidade.
+O modelo pode permitir várias ExternalIdentities por User; criação self-service de identidade adicional, account linking, merge de contas, fluxo de segunda identidade e política administrativa definitiva permanecem fora do Slice 3. Campos mínimos são conceituais; nenhuma implementação de schema/migration é autorizada por esta atualização.
 
 ---
 
@@ -1137,7 +1134,7 @@ Se autenticação for delegada, parte dessa proteção pode pertencer ao IdP.
 
 # 61. CSRF
 
-Se autenticação utilizar cookies, avaliar proteção contra:
+Operações mutáveis autenticadas por cookie exigem proteção explícita contra:
 
 ```text
 CSRF

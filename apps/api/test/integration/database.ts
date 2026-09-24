@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -88,6 +88,19 @@ export async function createTestDatabase() {
     if (version.rows[0]?.version !== '170011')
       throw new Error('Testes requerem PostgreSQL 17.11 oficial LGPD.');
     assertExclusiveTestDatabase(name, name, marker);
+    await admin.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='lgpd_auth_persistence') THEN
+        CREATE ROLE lgpd_auth_persistence NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+      END IF;
+    END $$`);
+    const authRole = await admin.query(
+      "select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname='lgpd_auth_persistence'",
+    );
+    if (
+      authRole.rows.length !== 1 ||
+      Object.values(authRole.rows[0]).some((value) => value !== false)
+    )
+      throw new Error('Role administrativa de autenticação inválida.');
     await admin.query(`CREATE DATABASE "${name}" OWNER "lgpd_admin"`);
     created = true;
     // CREATE DATABASE cannot share a transaction with its marker. If marking fails,
@@ -112,6 +125,20 @@ export async function createTestDatabase() {
       migration,
       name,
     );
+    await preparation.query(
+      "select set_config('lgpd.auth_runtime_role',$1,false), set_config('lgpd.auth_migration_role',$2,false)",
+      [runtimeConfig.user, migrationConfig.user],
+    );
+    const provisioning = readFileSync(
+      fileURLToPath(
+        new URL(
+          '../../../../infra/postgres/provision-auth-persistence.sql',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    );
+    await preparation.query(provisioning);
     return {
       name,
       concurrency,
@@ -119,6 +146,7 @@ export async function createTestDatabase() {
       migration,
       database: drizzle(runtime, { schema }),
       runtimeRole: runtimeConfig.user,
+      migrationRole: migrationConfig.user,
       async reset() {
         await verifyExclusive();
         const actual = await migration.query<{ name: string }>(
@@ -126,7 +154,7 @@ export async function createTestDatabase() {
         );
         assertExclusiveTestDatabase(actual.rows[0]?.name ?? '', name, marker);
         await migration.query(
-          'TRUNCATE role_assignment_business_units, role_assignments, memberships, business_units, organizations, users, roles',
+          'TRUNCATE sessions, external_identities, role_assignment_business_units, role_assignments, memberships, business_units, organizations, users, roles',
         );
         await migration.query(
           'insert into users (id,name,email) values ($1,$2,$3)',

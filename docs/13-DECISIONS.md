@@ -2555,6 +2555,551 @@ Esta decisão não resolve catálogo definitivo de roles, papel ADMIN, PLATFORM,
 
 ---
 
+# DEC-050 — Provisionamento controlado de identidade no D1
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-18
+
+## Related Questions
+
+SECQ-001 e ORGQ-004, somente quanto à delimitação do login e do provisionamento no D1. A escolha do fornecedor OIDC e o mecanismo de criação de Organization permanecem pendentes. A decisão também delimita a lacuna de provisionamento/vinculação de identidade identificada na análise do Slice 3, sem Question ID específico.
+
+## Context
+
+Aprovação humana expressa para o Slice 3, antes da implementação da fundação de autenticação e contexto da requisição necessária ao D1.
+
+## Decision
+
+No D1, usuários com acesso à aplicação são provisionados de forma controlada. User, ExternalIdentity, Membership e as concessões necessárias existem antes do login.
+
+A autenticação OIDC identifica a ExternalIdentity pela combinação validada de issuer + subject e resolve o User interno correspondente.
+
+O login não cria automaticamente User, Membership, RoleAssignment ou Organization, não concede acesso a BusinessUnit e não realiza associação automática por e-mail. O e-mail não é chave de identidade e não pode ser usado para associação automática entre uma identidade OIDC e um User.
+
+## Rationale
+
+Separar a autenticação da identidade externa do provisionamento dos vínculos e concessões de acesso, preservando o modelo de Identity/Tenant aprovado.
+
+## Consequences
+
+Signup público, fluxo completo de convites, account linking self-service e merge automático de contas permanecem fora deste Slice. Essa delimitação não exclui essas capacidades da V1 por si só.
+
+A decisão não escolhe fornecedor OIDC, mecanismo operacional de provisionamento, política de nome/e-mail/claims, lifecycle de Session ou proteção/bootstrap das tabelas globais. SECQ-001 permanece IN_ANALYSIS e ORGQ-004 permanece OPEN. Nenhuma implementação é autorizada nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md.
+
+---
+
+# DEC-051 — Identidade externa e perfil no D1
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-18
+
+## Related Questions
+
+SECQ-001, somente quanto à identidade externa e aos atributos de perfil no D1. O fornecedor gerenciado continua pendente. A decisão responde às lacunas de chave, unicidade, vínculo e tratamento de claims de perfil identificadas na análise do Slice 3, sem criar novos Question IDs. Complementa DEC-040 e DEC-050.
+
+## Context
+
+Aprovação humana expressa para o Slice 3, antes da implementação de ExternalIdentity e da autenticação necessária ao D1.
+
+## Decision
+
+ExternalIdentity representa a identidade autenticada externa vinculada a um User global interno. A chave estável é a combinação issuer + subject, com unicidade global UNIQUE (issuer, subject): a mesma identidade externa não pode estar vinculada a dois Users.
+
+ExternalIdentity possui, no mínimo conceitualmente, id, userId, issuer, subject, createdAt e updatedAt, se coerente com o padrão estrutural existente. Esta decisão não autoriza implementação de schema ou migration.
+
+Nome e e-mail não são chaves de identidade. O sistema não pode localizar User por e-mail e vinculá-lo automaticamente, fundir contas por e-mail, alterar o vínculo de ExternalIdentity por mudança de e-mail ou conceder Membership, RoleAssignment ou qualquer autorização com base em e-mail ou email_verified.
+
+No D1, os dados necessários do User, incluindo nome/e-mail exigidos pelo modelo interno atual, são fornecidos pelo provisionamento controlado da DEC-050. Claims OIDC name, email e email_verified são atributos de perfil/claims externos, não autoridade de identidade ou autorização.
+
+Não haverá sincronização automática de name/email do User a cada login. A ausência desses claims não impede a autenticação de uma ExternalIdentity previamente provisionada e válida. Mudança de e-mail no IdP não altera a identidade interna nem o vínculo ExternalIdentity → User.
+
+O modelo pode permitir múltiplas ExternalIdentities para um User. Isso não aprova o fluxo de vinculação de uma segunda identidade.
+
+## Rationale
+
+Preservar a identidade interna e os vínculos de acesso independentemente dos atributos de perfil externos, usando a chave estável issuer + subject e o provisionamento controlado aprovado.
+
+## Consequences
+
+Criação self-service de identidade adicional, account linking, merge de contas, fluxo para vincular uma segunda identidade e política administrativa definitiva para esses casos permanecem fora do Slice 3.
+
+A decisão não resolve provider OIDC, MFA, lifecycle global/disable de User, lifecycle de Session, armazenamento de tokens do IdP, proteção/bootstrap das tabelas globais, onboarding administrativo definitivo ou atualização administrativa de perfil. SECQ-001 permanece IN_ANALYSIS; nenhuma implementação é autorizada nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, features/AUTH.md.
+
+---
+
+# DEC-052 — Bootstrap restrito de contexto tenant
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-20
+
+## Related Questions
+
+APIQ-020 e DBQ-009, quanto à separação entre Organization solicitada e autorizada e ao bootstrap restrito antes do contexto RLS. Complementa DEC-043, DEC-045 e DEC-046, sem alterar suas garantias. O mecanismo SQL concreto não possui decisão registrada.
+
+## Context
+
+A autenticação parte de identidade global; Membership é tenant-bound e protegida por RLS. O organizationId informado pelo cliente ainda não comprova autorização para estabelecer o contexto tenant.
+
+## Decision
+
+Estabelecer o contexto em duas fases. Na fase de identidade/bootstrap: validar Session, identificar o User, receber a Organization explicitamente solicitada como requestedOrganizationId e consultar, de forma específica e restrita ao authenticatedUserId e requestedOrganizationId, somente a Membership própria correspondente ou sua ausência. A consulta deve confirmar que a Membership existe, liga esse User à Organization solicitada e está ativa. Ausência ou inatividade não estabelece tenant autorizado; resultado negativo não pode enumerar Memberships ou Organizations de terceiros.
+
+Somente na fase seguinte a Organization validada torna-se authorizedOrganizationId. Operações tenant-bound usam withTenant(authorizedOrganizationId), permanecem sob RLS e carregam RoleAssignments e associações com BusinessUnits somente dentro do contexto tenant apropriado. Troca de Organization entre requests repete a validação; não herda autorização da request anterior. Session não congela Membership, RoleAssignments ou scopes como fonte definitiva de autorização: o backend consulta/valida o estado atual.
+
+Não criar API genérica de runtime/repository para listAllMemberships(), busca por Organization sem User autenticado, leitura irrestrita de Memberships ou escolha de Membership pelo cliente sem validação do User. User, ExternalIdentity e Session são globais, mas isso não autoriza acesso irrestrito do runtime; privilégios concretos devem seguir least privilege e limitar-se às operações de autenticação/sessão necessárias.
+
+Não usar migration credentials em requests normais, credencial administrativa global genérica, bypass genérico de RLS, SUPERUSER, BYPASSRLS, ownership de tabelas protegidas pelo runtime, grants amplos ou desabilitação de RLS/FORCE RLS. A credencial de migration permanece separada do runtime.
+
+## Rationale
+
+Impedir que um contexto solicitado pelo cliente seja elevado a tenant autorizado antes da confirmação restrita da Membership, mantendo a defesa em camadas de DEC-045 e DEC-046.
+
+## Consequences
+
+A solução PostgreSQL concreta para o bootstrap ainda precisa ser desenhada de modo compatível com constraints tenant-aware, FORCE RLS, runtime restrito e least privilege. Esta decisão aprova boundary e propriedades de segurança, não escolhe SQL, SECURITY DEFINER ou alternativa, grants específicos, lifecycle de User/Session, provider OIDC, MFA, transporte HTTP de requestedOrganizationId, endpoint de descoberta das próprias Organizations, permission matrix, ADMIN/PLATFORM_ADMIN ou cache de autorização. Não autoriza schema, migration, grants, policies, repositories ou endpoints nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 03-DATABASE.md, 09-SECURITY.md, features/AUTH.md, features/ORGANIZATIONS.md.
+
+---
+
+# DEC-053 — Lifecycle da Session
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-20
+
+## Related Questions
+
+SECQ-004 (cobertura parcial), SECQ-002 e APIQ-002. Complementa DEC-042 e DEC-052.
+
+## Context
+
+A sessão server-side com cookie opaco já foi aprovada, mas seu modelo de expiração e revogação precisava de limites estruturais para o Slice 3.
+
+## Decision
+
+Session é global e vinculada ao User. O navegador recebe somente segredo opaco criptograficamente imprevisível; o valor bruto não é persistido. Persistir representação não reversível apropriada para validar o segredo recebido. Session representa ao menos id interno, userId, representação protegida do token, createdAt, expiresAt e informação suficiente para revogação. Possui expiração absoluta e modelo capaz de suportar expiração por inatividade; durações concretas são configuráveis, não regra imutável de domínio.
+
+Um User pode ter múltiplas sessões simultâneas. Logout normal revoga somente a sessão atual; a arquitetura permite revogar todas as sessões de um User em caso futuro administrativo/de segurança. Sessão expirada ou revogada não autentica. Membership, RoleAssignments, scopes e permissions não ficam congelados na Session como autoridade definitiva. Session da aplicação é distinta dos tokens OIDC do IdP.
+
+## Rationale
+
+Permitir revogação e reavaliação da autorização atual sem persistir o segredo de sessão em claro nem acoplar a sessão da aplicação ao IdP.
+
+## Consequences
+
+Permanecem abertos os tempos concretos, frequência de atualização de lastSeenAt, algoritmo de digest, armazenamento de tokens do IdP, lifecycle global/disable de User, UI de gestão de sessões e logout global do IdP. O endpoint/UI de revogação geral fica fora deste Slice. Não autoriza implementação nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 03-DATABASE.md, 09-SECURITY.md, 11-TESTING.md, features/AUTH.md, features/ORGANIZATIONS.md.
+
+---
+
+# DEC-054 — Organization explícita via header
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-20
+
+## Related Questions
+
+APIQ-020. Complementa DEC-043 e DEC-052.
+
+## Context
+
+DEC-043 exige seleção explícita por request e DEC-052 distingue Organization solicitada da autorizada; faltava definir o transporte HTTP.
+
+## Decision
+
+Requests tenant-bound enviam `X-Organization-Id`, cujo valor é apenas requestedOrganizationId. O backend valida a Membership própria ativa conforme DEC-052 antes de estabelecer AuthenticatedContext tenant. Ausência do header em endpoint tenant-bound rejeita o request conforme o contrato HTTP a implementar. Endpoints globais anteriores ao contexto tenant, como início do login, callback OIDC, identificação da sessão independente de tenant e logout da sessão atual, não exigem o header.
+
+Não selecionar implicitamente a última Organization utilizada; Session não guarda Organization atual como autoridade. Requests concorrentes do mesmo User podem solicitar Organizations diferentes, com validação independente. Subdomain, query parameter, body e session state não são o mecanismo principal neste Slice.
+
+## Rationale
+
+O contexto fica explícito em cada request sem confundir o valor fornecido pelo cliente com autorização validada pelo backend.
+
+## Consequences
+
+Custom domains e detalhes secundários do contrato HTTP permanecem fora desta decisão. Não autoriza implementação nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 07-API.md, 09-SECURITY.md, 11-TESTING.md, features/AUTH.md, features/ORGANIZATIONS.md.
+
+---
+
+# DEC-055 — Cookie de sessão e baseline CSRF
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-20
+
+## Related Questions
+
+SECQ-002 e APIQ-002; complementa DEC-042 e DEC-053.
+
+## Context
+
+O transporte por cookie foi aprovado; faltavam as propriedades mínimas do cookie e a proteção das operações mutáveis.
+
+## Decision
+
+O segredo opaco da Session é transportado por cookie `HttpOnly`, `Path=/`, `SameSite=Lax` e `Secure` em HTTPS/produção. Não configurar `Domain` amplo sem necessidade arquitetural explícita. Frontend não armazena o identificador em localStorage, sessionStorage ou estado persistente acessível por JavaScript; tokens OIDC não são o mecanismo de autenticação exposto ao frontend.
+
+Após autenticação bem-sucedida, criar nova Session com novo segredo, sem reutilizar identificador controlado pelo cliente. Logout invalida primeiro a Session server-side e depois expira/remove o cookie. SameSite sozinho não basta contra CSRF: operações mutáveis autenticadas por cookie exigem proteção explícita, com validação de origem confiável e mecanismo CSRF apropriado. A técnica concreta fica para desenho técnico sem reduzir essas garantias. CORS com credentials não usa origem wildcard `*`. Não registrar cookies, authorization codes, tokens OIDC, session secrets ou outros secrets em logs.
+
+## Rationale
+
+Reduzir exposição do segredo, fixação de sessão e CSRF no transporte aprovado por DEC-042.
+
+## Consequences
+
+Custom domains, SSO corporativo, política completa de CORS de produção, rate limiting distribuído e provider OIDC não são decididos aqui. Não autoriza implementação nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 07-API.md, 09-SECURITY.md, 11-TESTING.md, features/AUTH.md, features/ORGANIZATIONS.md.
+
+---
+
+# DEC-056 — Bootstrap PostgreSQL restrito de Membership
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-20
+
+## Related Questions
+
+DBQ-009 e APIQ-020 já decididas; concretiza o bootstrap de DEC-052 sem alterar DEC-045/046 ou encerrar questões parcialmente relacionadas.
+
+## Context
+
+Membership é tenant-bound e tem ENABLE/FORCE RLS. O backend precisa confirmar a Membership própria ativa antes de transformar a Organization solicitada em contexto tenant autorizado. A policy tenant normal atual de `memberships` é implicitamente aplicável a PUBLIC; o runtime possui grants tenant normais, mas não pode obter leitura irrestrita no bootstrap.
+
+## Decision
+
+Implementar o bootstrap por função PostgreSQL `SECURITY DEFINER` restrita, conceitualmente `auth_private.resolve_membership(authenticated_user_id uuid, requested_organization_id uuid)`. Ela consulta explicitamente `user_id = authenticated_user_id AND organization_id = requested_organization_id AND active = true`, devolve no máximo uma linha com somente `membershipId` e `organizationId`, e produz a mesma forma de ausência para Membership inexistente/inativa ou Organization inexistente. Somente o backend, após validar Session legítima, fornece `authenticated_user_id`; o cliente não o escolhe. `requested_organization_id` ainda não é tenant autorizado. Somente resultado positivo permite `authorizedOrganizationId`, `withTenant()` e carregamento tenant-bound de concessões sob RLS.
+
+O owner final da função será uma role dedicada conceitualmente `lgpd_membership_bootstrap`: NOLOGIN, NOSUPERUSER, NOBYPASSRLS, NOCREATEDB, NOCREATEROLE, sem ownership de `memberships` nem privilégios tenant/admin genéricos. Conceder-lhe somente USAGE nos schemas necessários e SELECT nas colunas de `memberships` necessárias à consulta. Runtime não será membro dessa role; receberá somente USAGE no schema privado e EXECUTE especificamente na função. Revogar EXECUTE de PUBLIC sem janela de exposição durante criação/provisionamento. Migrator não será owner final da função e não ganhará CREATEROLE.
+
+Manter ENABLE/FORCE RLS em `memberships`. A policy tenant normal deixará de aplicar-se implicitamente a PUBLIC e será atribuída explicitamente às roles pertinentes às operações tenant normais. Criar policy SELECT separada apenas para `lgpd_membership_bootstrap`, limitada ao User, Organization e vínculo ativo usados internamente pela função, evitando combinação permissiva OR que amplie o runtime. Fora da função, runtime não recebe essa policy; dentro dela, o owner dedicado continua sujeito a FORCE RLS. Não desligar `row_security` ou RLS, nem usar BYPASSRLS ou ownership da tabela.
+
+A função usará parâmetros `uuid`, nomes totalmente qualificados, `search_path` fixo com apenas schemas confiáveis e `pg_temp` em posição segura, sem concatenação ou SQL dinâmico desnecessário. Usar STRICT se compatível com a implementação final. Settings internos locais à transação podem ligar parâmetros à policy, mas não são prova de autenticação. Preservar predicados explícitos na função mesmo quando a policy os repetir. Os grants tenant normais de runtime em `memberships` podem permanecer: SELECT concede a operação, não visibilidade de linhas que não passem pelo RLS. Operações tenant normais continuam com Organization autorizada, `withTenant()` e contexto local à transação.
+
+O PostgreSQL não precisa reautenticar criptograficamente o User dentro da função. Comprometimento total da credencial runtime com SQL arbitrário inclui a capacidade de invocar funções para as quais ela possui EXECUTE; essa premissa não autoriza SUPERUSER, BYPASSRLS, ownership de tabelas, migration/admin credentials no runtime, leitura irrestrita de Memberships ou desabilitação de RLS/FORCE RLS. RLS e constraints continuam defesa em profundidade contra erros de aplicação e relações cross-tenant inválidas.
+
+## Rationale
+
+Encapsular o único primitive de bootstrap com retorno mínimo, privilégio dedicado e policy específica, sem transformar o contexto fornecido pelo cliente em autorização nem ampliar a leitura normal do runtime.
+
+## Consequences
+
+Provisionar a role dedicada administrativamente, de forma controlada e reproduzível; não elevar o migrator atual apenas para criá-la. Credenciais administrativas não entram na configuração/runtime normal. O procedimento exato de provisionamento fica para a implementação.
+
+Testes futuros com PostgreSQL real devem comprovar: runtime sem tenant não lê Memberships diretamente; runtime com tenant permanece na policy normal; owner sem BYPASSRLS/ownership; PUBLIC sem EXECUTE; runtime com EXECUTE somente no primitive privilegiado necessário; vínculo ativo próprio retorna apenas os dois IDs; vínculo ausente/inativo e Organization inexistente retornam ausência indistinguível; parâmetros não retornam Membership de outro User nem mais de uma linha; settings de bootstrap não tornam a policy aplicável ao runtime fora da função; search_path/object shadowing não alteram comportamento; regressão integral de RLS/constraints do Slice 2; pool, commit e rollback sem contexto residual; runtime sem SUPERUSER/BYPASSRLS/ownership; credenciais migration/admin ausentes do runtime; cliente não substitui authenticatedUserId; Session ausente/inválida não inicia bootstrap; `X-Organization-Id` só vira tenant autorizado após resultado positivo.
+
+Esta decisão não define schema completo de Session, digest, duração/renovação, provider OIDC, MFA, permission matrix, autorização funcional, endpoints/respostas HTTP finais, proteção das demais tabelas globais, política administrativa definitiva de provisionamento ou restante do Slice 3. Não autoriza implementação nesta etapa.
+
+## Affected Documents
+
+12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 03-DATABASE.md, 07-API.md, 09-SECURITY.md, 11-TESTING.md, features/AUTH.md, features/ORGANIZATIONS.md.
+
+---
+
+
+# DEC-057 — Fronteira PostgreSQL restrita para persistência global de autenticação
+
+**Status:** DECIDED
+**Decision Date:** 2026-09-24
+
+## Related Questions
+
+SECQ-001, somente quanto à fronteira de persistência necessária à autenticação; SECQ-002, quanto à persistência da Session server-side; e DBQ-009, quanto à distinção entre tabelas tenant-bound protegidas por RLS e tabelas globais protegidas por primitives restritos.
+
+DEC-057 não escolhe provider OIDC, não altera a política temporal da Session e não modifica DEC-046 ou DEC-056. Nenhuma Open Question muda de estado por esta Decision.
+
+## Context
+
+ExternalIdentity e Session são entidades globais necessárias antes do estabelecimento do contexto tenant.
+
+Conceder SELECT, INSERT ou UPDATE diretamente à role runtime permitiria que SQL arbitrário executado com essa credencial enumerasse identidades, consultasse digests ou modificasse Sessions fora das operações mínimas aprovadas.
+
+É necessária uma fronteira PostgreSQL explícita que permita à aplicação:
+
+- resolver uma ExternalIdentity por issuer + subject;
+- criar uma Session;
+- resolver uma Session por token digest;
+- revogar uma Session;
+
+sem conceder acesso direto às tabelas globais correspondentes.
+
+## Decision
+
+`external_identities` e `sessions` permanecem entidades globais, sem `organization_id` e sem RLS tenant.
+
+`lgpd_runtime` não recebe SELECT, INSERT, UPDATE ou DELETE diretamente em:
+
+- `external_identities`;
+- `sessions`;
+- `users`.
+
+O acesso runtime à persistência global de autenticação ocorre exclusivamente através dos seguintes primitives PostgreSQL:
+
+```text
+auth_private.resolve_external_identity(text, text)
+
+auth_private.create_session(
+  uuid,
+  text,
+  timestamp with time zone
+)
+
+auth_private.resolve_session(text)
+
+auth_private.revoke_session(
+  uuid,
+  timestamp with time zone
+)
+```
+
+Os quatro primitives são `SECURITY DEFINER`.
+
+Seu owner final é a role dedicada:
+
+```text
+lgpd_auth_persistence
+```
+
+Essa role deve possuir:
+
+```text
+NOLOGIN
+NOSUPERUSER
+NOBYPASSRLS
+NOCREATEDB
+NOCREATEROLE
+NOINHERIT
+```
+
+Ela:
+
+- não é concedida como membership a `lgpd_runtime`;
+- não é concedida como membership ao migrator;
+- não é owner de `users`;
+- não é owner das tabelas globais ou tenant-bound;
+- é owner de `auth_private` e dos quatro primitives;
+- não possui privilégios administrativos gerais.
+
+Seus únicos privilégios diretos de tabela são:
+
+```text
+external_identities:
+  SELECT
+
+sessions:
+  SELECT
+  INSERT
+  UPDATE
+
+users:
+  nenhum
+```
+
+`lgpd_runtime` recebe somente:
+
+```text
+USAGE ON SCHEMA auth_private
+
+EXECUTE ON FUNCTION
+  auth_private.resolve_external_identity(...)
+  auth_private.create_session(...)
+  auth_private.resolve_session(...)
+  auth_private.revoke_session(...)
+```
+
+`lgpd_runtime` não recebe `CREATE` em `auth_private`.
+
+`PUBLIC` não recebe `USAGE` ou `CREATE` em `auth_private` e não possui `EXECUTE` nos primitives.
+
+### resolve_external_identity
+
+`resolve_external_identity(issuer, subject)`:
+
+- localiza exatamente a combinação issuer + subject;
+- retorna zero ou uma linha;
+- retorna somente `userId`;
+- não pesquisa por email;
+- não cria ou altera vínculos;
+- não permite listagem.
+
+### create_session
+
+`create_session(userId, tokenDigest, expiresAt)`:
+
+- cria somente a estrutura mínima da Session;
+- recebe digest previamente calculado;
+- não gera token;
+- não calcula digest;
+- não define duração;
+- deixa `id` e `createdAt` sob controle do banco;
+- inicia `revokedAt` como NULL;
+- retorna somente `sessionId`, `createdAt`, `expiresAt` e `revokedAt`;
+- não retorna `tokenDigest`.
+
+A FK `sessions.user_id → users.id` valida a existência do User sem exigir SELECT em `users` do runtime ou da role dedicada.
+
+### resolve_session
+
+`resolve_session(tokenDigest)` retorna somente:
+
+```text
+sessionId
+userId
+expiresAt
+revokedAt
+```
+
+Não retorna:
+
+- `tokenDigest`;
+- token bruto;
+- Organization;
+- Membership;
+- RoleAssignment;
+- permission;
+- BusinessUnit scope.
+
+### revoke_session
+
+`revoke_session(sessionId, revokedAt)`:
+
+- atualiza somente `revoked_at`;
+- não exclui a Session;
+- não reabre a Session;
+- preserva o primeiro timestamp de revogação;
+- retorna `true` quando a Session existe e está ou permanece revogada;
+- retorna `false` quando a Session não existe.
+
+### Hardening
+
+Os primitives devem:
+
+- utilizar parâmetros tipados;
+- utilizar nomes de objetos totalmente qualificados;
+- possuir `search_path` fixo contendo somente schemas confiáveis, com `pg_temp` em posição segura;
+- não utilizar SQL dinâmico desnecessário;
+- utilizar `STRICT` quando semanticamente apropriado;
+- ter `EXECUTE` revogado de `PUBLIC`;
+- ser criados, protegidos e concedidos sem janela pública observável.
+
+## Operational Separation
+
+As responsabilidades permanecem separadas:
+
+```text
+administrative bootstrap
+→ cria e configura as roles PostgreSQL
+
+structural migration
+→ cria tabelas, FKs, constraints e índices
+
+administrative auth provisioning
+→ valida a role dedicada e configura schema, functions, ownership e grants
+
+runtime
+→ utiliza somente os primitives explicitamente concedidos
+```
+
+`infra/postgres/init.sh` é responsável por criar `lgpd_auth_persistence`.
+
+O provisionamento pós-migration:
+
+- não cria nem altera essa role;
+- valida que suas propriedades são exatamente as aprovadas;
+- falha se a role estiver ausente ou incorreta;
+- valida que runtime e migrator não são membros dela;
+- configura `auth_private`, functions, ownership e grants.
+
+O migrator permanece `NOCREATEROLE`, não recebe membership na role dedicada e não recebe credenciais administrativas.
+
+Credenciais administrativas não entram na configuração ou no runtime da aplicação.
+
+## Threat Model
+
+O cliente HTTP não controla o `userId` interno.
+
+O backend produzirá esse valor somente após autenticação e resolução válidas.
+
+Aceita-se que comprometimento total da credencial `lgpd_runtime`, com execução SQL arbitrária, permita invocar os primitives que essa role possui autorização explícita para executar, inclusive com parâmetros arbitrários.
+
+Essa premissa não autoriza:
+
+- grants diretos nas tabelas globais;
+- primitive de listagem;
+- acesso direto a `users`;
+- retorno de token digests;
+- DELETE de Session;
+- alteração de ExternalIdentity;
+- SUPERUSER;
+- BYPASSRLS;
+- ownership amplo;
+- credenciais administrativas ou de migration no runtime.
+
+## Rationale
+
+Os primitives restringem operações, parâmetros e retornos no PostgreSQL e evitam que o runtime obtenha acesso genérico às tabelas globais.
+
+Não se adiciona RLS apenas por simetria: ExternalIdentity e Session não são recursos tenant-bound e não possuem `organization_id`.
+
+## Consequences
+
+A implementação deve comprovar:
+
+- ausência de DML direto do runtime nas três tabelas globais;
+- propriedades da role dedicada;
+- ausência de membership do runtime e migrator;
+- ownership de schema e functions;
+- ausência de acesso de PUBLIC;
+- grants mínimos;
+- retornos mínimos;
+- search_path endurecido;
+- preservação do primeiro `revoked_at`;
+- ausência de DELETE;
+- regressão integral das migrations, constraints e RLS do Slice 2.
+
+DEC-057 não decide:
+
+- geração do segredo da Session;
+- algoritmo concreto de digest;
+- duração absoluta;
+- expiração por inatividade;
+- renovação;
+- provider OIDC;
+- PKCE;
+- state/nonce;
+- endpoints HTTP;
+- cookies;
+- CSRF;
+- CORS;
+- MFA;
+- permission matrix;
+- eventos persistentes de segurança;
+- bootstrap tenant da DEC-056.
+
+## Affected Documents
+
+README.md, 03-DATABASE.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -2608,6 +3153,14 @@ Esta decisão não resolve catálogo definitivo de roles, papel ADMIN, PLATFORM,
 | DEC-047 | Vitest como runner de testes do backend |
 | DEC-048 | Estratégia híbrida de isolamento/reset dos testes de persistência |
 | DEC-049 | Role como catálogo global da plataforma |
+| DEC-050 | Provisionamento controlado de identidade no D1 |
+| DEC-051 | Identidade externa e perfil no D1 |
+| DEC-052 | Bootstrap restrito de contexto tenant |
+| DEC-053 | Lifecycle da Session |
+| DEC-054 | Organization explícita via header |
+| DEC-055 | Cookie de sessão e baseline CSRF |
+| DEC-056 | Bootstrap PostgreSQL restrito de Membership |
+| DEC-057 | Fronteira PostgreSQL restrita para persistência global de autenticação |
 
 ---
 

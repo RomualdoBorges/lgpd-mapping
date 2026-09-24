@@ -49,7 +49,7 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. A descoberta da Membership própria ativa usa o primitive restrito aprovado em DEC-056, após Session válida, sem policy irrestrita; o desenho ainda não está implementado. Os exemplos deste documento não autorizam outros acessos globais.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -220,15 +220,7 @@ A estratégia definitiva de upload ainda precisa ser definida.
 
 Endpoints protegidos exigem autenticação.
 
-A estratégia concreta ainda depende da decisão:
-
-```text
-JWT
-Session Cookie
-OIDC/SSO
-```
-
-A API não deve assumir uma estratégia específica antes da decisão arquitetural.
+A autenticação da aplicação usa Session server-side com cookie opaco (DEC-042/053/055); OIDC é o mecanismo delegado de identificação. O frontend não administra tokens de autenticação.
 
 ---
 
@@ -249,6 +241,8 @@ Essas informações devem ser confiáveis e validadas pelo backend.
 ---
 
 # 9. Organization ID
+
+Requests tenant-bound devem enviar `X-Organization-Id` (DEC-054). Esse valor é apenas requestedOrganizationId: o backend valida a Membership própria ativa conforme DEC-052 antes de estabelecer authorizedOrganizationId. Ausência do header rejeita o request tenant-bound; endpoints globais de autenticação/contexto anteriores ao tenant não o exigem. Session não guarda Organization atual como autoridade.
 
 Não confiar em:
 
