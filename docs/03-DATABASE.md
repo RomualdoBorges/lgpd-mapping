@@ -31,7 +31,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -342,7 +342,9 @@ ExternalIdentity e Session são relações globais do User, sem organization_id 
 
 Runtime não possui acesso direto a essas tabelas nem SELECT em users. Conforme DEC-057, a persistência global é acessada exclusivamente por quatro primitives SECURITY DEFINER em `auth_private`, com owner NOLOGIN dedicado e retornos mínimos.
 
-A aplicação não armazena senhas locais nem segredo bruto da Session. Geração do token, algoritmo de digest, duração concreta, inatividade e renovação permanecem fora da S3.1 e, quando aplicável, em SECQ-004. Fornecedor OIDC permanece em SECQ-001. Integridade composta e RLS foram aprovados em DEC-045 e DEC-046 (DBQ-008 e DBQ-009).
+A aplicação não armazena senhas locais nem segredo bruto da Session. DEC-058 define o digest; DEC-067 define duração absoluta padrão de 12 horas, idle timeout de 30 minutos e atividade persistida com throttling de cinco minutos; DEC-068 proíbe renovação automática e sliding expiration; DEC-069 define a revogação da Session atual no logout. Fornecedor OIDC permanece em SECQ-001. Integridade composta e RLS foram aprovados em DEC-045 e DEC-046 (DBQ-008 e DBQ-009).
+
+Impacto esperado para implementação futura: adicionar `last_activity_at TIMESTAMPTZ NOT NULL`, com backfill `last_activity_at = created_at`. `expires_at` permanece o limite absoluto. Não adicionar `absolute_expires_at`, refresh token, device ID, remember-me ou contador de renovação. Runtime continua sem DML direto em `sessions` conforme DEC-057.
 
 DEC-035 a DEC-038, DEC-040, DEC-042 e DEC-043 são a referência aprovada. Isto é modelo conceitual, não migration; Drizzle está aprovado em DEC-044.
 

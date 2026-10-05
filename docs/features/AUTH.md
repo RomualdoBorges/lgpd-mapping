@@ -30,7 +30,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente. Pela DEC-052, essa solicitação é apenas requestedOrganizationId: a consulta restrita à Membership própria ativa do User autenticado deve preceder authorizedOrganizationId e withTenant(); concessões e scopes são carregados no contexto tenant, sem congelá-los na sessão. A S3.2 implementou a fundação PostgreSQL da DEC-056 por `auth_private.resolve_membership`, que retorna somente membershipId + organizationId para a Membership ativa do par exato User + Organization, e um repository que chama exclusivamente essa primitive. A integração HTTP que produz authenticatedUserId após Session válida e transporta requestedOrganizationId ainda não foi implementada. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente. Pela DEC-052, essa solicitação é apenas requestedOrganizationId: a consulta restrita à Membership própria ativa do User autenticado deve preceder authorizedOrganizationId e withTenant(); concessões e scopes são carregados no contexto tenant, sem congelá-los na sessão. A S3.2 implementou a fundação PostgreSQL da DEC-056 por `auth_private.resolve_membership`, que retorna somente membershipId + organizationId para a Membership ativa do par exato User + Organization, e um repository que chama exclusivamente essa primitive. A integração HTTP tenant que transporta requestedOrganizationId, resolve a Membership e produz `AuthorizedTenantContext` ainda não foi implementada. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco, RLS ou herança hierárquica. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -551,7 +551,7 @@ Não adicionar SDK antes da decisão.
 
 # 24. Sessão
 
-SECQ-002 foi decidida por DEC-042: sessão server-side com cookie opaco. DEC-053 define segredo protegido, expiração absoluta, suporte à inatividade e revogação; DEC-055 define propriedades do cookie e proteção CSRF. Frontend não administra tokens; backend consulta autorização atual. Durações, renovação e detalhes operacionais permanecem em SECQ-004. APIQ-002 está integralmente coberta pelo transporte escolhido.
+SECQ-002 foi decidida por DEC-042: sessão server-side com cookie opaco. DEC-053 define segredo protegido, expiração absoluta, suporte à inatividade e revogação; DEC-055 define propriedades do cookie e proteção CSRF. Frontend não administra tokens; backend consulta autorização atual. DEC-067 define 12 horas de duração absoluta, 30 minutos de idle timeout e `lastActivityAt` com persistência throttled em cinco minutos somente por request autenticada válida; DEC-068 proíbe renovação automática e sliding expiration; DEC-069 define o logout da Session atual. APIQ-002 está integralmente coberta pelo transporte escolhido.
 
 ---
 
@@ -585,7 +585,7 @@ Admin remove MANAGER
 token antigo continua dizendo MANAGER
 ```
 
-A estratégia deve considerar revogação/expiração/refresh.
+A Session local não possui refresh ou sliding expiration: atividade não altera `expiresAt` e uma nova Session exige novo fluxo de autenticação após expiração (DEC-067/068).
 
 ---
 
@@ -618,19 +618,9 @@ A estratégia deve ser definida em conjunto com o mecanismo de autenticação.
 
 # 29. Logout
 
-A aplicação deve possuir operação de logout.
+Pela DEC-069, o logout da Session atual segue: identificar a Session autenticada; revogar e confirmar server-side; remover o cookie conforme DEC-059; responder 204. A revogação é idempotente e preserva o primeiro `revokedAt`. Request posterior ao commit recebe o 401 da DEC-061; request já autenticada pode terminar.
 
-Conceitualmente:
-
-```text
-User
-↓
-Logout
-↓
-Session invalidated
-↓
-Frontend authenticated state cleared
-```
+Não inclui logout de todos os dispositivos, revogação administrativa global, logout global no IdP, UI de Sessions, limite de Sessions ou identificação de dispositivo.
 
 ---
 
@@ -848,11 +838,13 @@ auth state invalidated
 login
 ```
 
-Comportamento de refresh depende da solução escolhida.
+Não existe refresh da Session local. Se a sessão do IdP ainda estiver ativa, um novo fluxo de autenticação pode terminar sem novo prompt, mas cria nova Session e não reativa a anterior (DEC-068).
 
 ---
 
 # 42. 403
+
+Pela DEC-065, resultado negativo do bootstrap tenant usa uniformemente 403/`ORGANIZATION_ACCESS_DENIED`. Isso não resolve ERRQ-004 para recursos fora do scope dentro de tenant já autorizado.
 
 Quando usuário está autenticado, mas não possui permissão:
 
@@ -861,6 +853,8 @@ Quando usuário está autenticado, mas não possui permissão:
 ```
 
 quando a política permitir revelar existência do recurso.
+
+Pela DEC-066, isso exige que o recurso seja legitimamente visível e que somente a ação esteja negada; nesse caso, usar 403/`FORBIDDEN` e `Ação não autorizada.`. Se o usuário não puder confirmar a existência, retornar o mesmo 404 do recurso inexistente/cross-tenant.
 
 ---
 
@@ -875,6 +869,8 @@ Conforme regras gerais:
 ```
 
 quando apropriado.
+
+Pela DEC-066, “quando apropriado” inclui também recurso do tenant autorizado que esteja fora do scope de visibilidade. No mesmo endpoint, inexistente, cross-tenant e fora do scope compartilham status, código, mensagem e formato 404.
 
 ---
 
@@ -900,7 +896,7 @@ Mesmo que usuário continue válido globalmente:
 Membership Organization A = disabled
 ```
 
-deve impedir acesso à Organization A.
+deve impedir acesso à Organization A. No bootstrap tenant da S3.4, Membership inexistente, inativa, pertencente a outro User ou Organization inexistente retornam a mesma resposta pública 403/`ORGANIZATION_ACCESS_DENIED`, sem revelar a causa interna (DEC-065).
 
 ---
 
@@ -973,7 +969,7 @@ Conforme DEC-057:
 - `resolve_session` retorna somente sessionId, userId, expiresAt e revokedAt;
 - `revoke_session` preserva a primeira revogação e não exclui a Session.
 
-Os repositories chamam exclusivamente esses primitives. Pela DEC-058, o backend calcula `tokenDigest = SHA-256(sessionSecret)`; o segredo bruto nunca é persistido e `resolve_session` continua recebendo somente o digest. HMAC, Argon2 e novo secret operacional não são usados nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo, duração concreta, inatividade, OIDC e HTTP continuam pendentes.
+Os repositories chamam exclusivamente esses primitives. Pela DEC-058, o backend calcula `tokenDigest = SHA-256(sessionSecret)`; o segredo bruto nunca é persistido e `resolve_session` continua recebendo somente o digest. HMAC, Argon2 e novo secret operacional não são usados nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo e fornecedor OIDC continuam pendentes. Duração, inatividade, renovação local e logout estão definidos nas DEC-067/068/069.
 
 Não localizar/vincular User ou fundir contas por e-mail, nem conceder Membership, RoleAssignment ou autorização por e-mail/email_verified. Mudança de e-mail no IdP não altera User ou vínculo ExternalIdentity → User.
 
@@ -1328,7 +1324,7 @@ type AuthenticatedIdentity = Readonly<{
 
 Após validar a Session, o mecanismo de autenticação atribui temporariamente esse valor a `request.authenticatedIdentity`. Um contrato/decorator tipado o disponibiliza ao controller, que o passa explicitamente a application/use cases. Application/domain não recebem `Request` ou `Response` e não dependem de NestJS, Express, provider request-scoped ou AsyncLocalStorage para obter identidade. Repositories também não descobrem User, Session ou tenant implicitamente.
 
-Organization, Membership, roles, permissions, Business Units, segredo, digest, cookie, identidade externa, perfil e objetos HTTP não pertencem a `AuthenticatedIdentity`. A S3.4 comporá `AuthorizedTenantContext` após `resolve_membership`; autorização será uma estrutura posterior.
+Organization, Membership, roles, permissions, Business Units, segredo, digest, cookie, identidade externa, perfil e objetos HTTP não pertencem a `AuthenticatedIdentity`. Pela DEC-062, a S3.4 deverá compor, somente após resultado positivo de `resolve_membership()`, um contrato separado `AuthorizedTenantContext` com exclusivamente `membershipId` e `authorizedOrganizationId`. Não duplicará a identidade, não incluirá requestedOrganizationId, roles, permissions, Business Units ou objetos HTTP/banco e poderá ser recebido separadamente por controllers e application/use cases. Autorização por roles/scopes será uma estrutura posterior.
 
 ---
 

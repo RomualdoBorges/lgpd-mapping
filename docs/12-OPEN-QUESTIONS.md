@@ -1085,11 +1085,11 @@ Se autenticação for delegada, será responsabilidade do IdP?
 
 ## SECQ-004 — Session expiration
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** HIGH  
-**Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [26-RELEASE-CHECKLIST.md](26-RELEASE-CHECKLIST.md), [AUTH.md](features/AUTH.md)  
+**Affected Documents:** [03-DATABASE.md](03-DATABASE.md), [07-API.md](07-API.md), [09-SECURITY.md](09-SECURITY.md), [11-TESTING.md](11-TESTING.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [21-DATA-DICTIONARY.md](21-DATA-DICTIONARY.md), [26-RELEASE-CHECKLIST.md](26-RELEASE-CHECKLIST.md), [AUTH.md](features/AUTH.md)
 **Affected Delivery:** Segurança / Authentication / uploads  
-**Blocks:** implementar a decisão «Session expiration» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** nenhum bloqueio pendente nesta questão; aplicar DEC-067, DEC-068 e DEC-069
 
 ### Question
 
@@ -1105,11 +1105,23 @@ revocation
 
 ?
 
+### Decision
+
+DEC-067 define duração absoluta padrão de 12 horas, idle timeout de 30 minutos e `lastActivityAt` persistido por request autenticada válida com throttling de cinco minutos, sem atualização periódica. DEC-068 proíbe sliding expiration, extensão automática de `expiresAt`, renovação da mesma Session e refresh local. DEC-069 define logout da Session atual com revogação server-side antes da remoção do cookie e resposta 204.
+
+### Rationale
+
+Limitar Sessions abandonadas e absolutas, separar Session local do lifecycle do IdP e garantir logout efetivo sem DML direto do runtime.
+
+### Decision Date
+
+2026-10-02
+
 ---
 
 ### Delimitação — DEC-053
 
-Session global vinculada ao User, com segredo opaco imprevisível armazenado somente por representação não reversível; expiração absoluta, suporte a inatividade, múltiplas sessões, revogação da sessão atual no logout e capacidade futura de revogação geral estão aprovados. DEC-058 define `tokenDigest = SHA-256(sessionSecret)`, calculado pelo backend, sem persistir o segredo bruto e sem introduzir HMAC, Argon2 ou novo secret operacional nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo permanecem adiados. SECQ-004 continua OPEN quanto a durações concretas, renovação, frequência de atualização de lastSeenAt e demais detalhes operacionais não decididos; o lifecycle global de User também não foi escolhido.
+Session global vinculada ao User, com segredo opaco imprevisível armazenado somente por representação não reversível; expiração absoluta, suporte a inatividade, múltiplas sessões, revogação da sessão atual no logout e capacidade futura de revogação geral estão aprovados. DEC-058 define `tokenDigest = SHA-256(sessionSecret)`, calculado pelo backend, sem persistir o segredo bruto e sem introduzir HMAC, Argon2 ou novo secret operacional nesta etapa. Quantidade de bytes, encoding e geração concreta do segredo permanecem adiados.
 
 ## SECQ-005 — Upload malware scanning
 
@@ -4919,6 +4931,18 @@ A Organization informada em cada request é apenas requestedOrganizationId. Vali
 
 Requests tenant-bound usam `X-Organization-Id` como requestedOrganizationId e são rejeitados se o header faltar. Endpoints globais de autenticação/contexto anteriores ao tenant não o exigem. Não há seleção implícita da última Organization nem autoridade tenant armazenada na Session; cada request, inclusive concorrente, é validado independentemente.
 
+### Complemento — DEC-062
+
+Após resolução positiva de `resolve_membership()`, a S3.4 produz `AuthorizedTenantContext` separado de `AuthenticatedIdentity`, contendo somente `membershipId` e `authorizedOrganizationId`. O valor solicitado em `X-Organization-Id` não se torna autorizado por cópia direta; os dois campos vêm do resultado positivo do bootstrap. Identidade, requestedOrganizationId, roles, permissions, Business Units e objetos HTTP/banco não pertencem ao contexto tenant.
+
+### Complemento — DEC-065
+
+O contrato HTTP da S3.4 usa 400/`ORGANIZATION_CONTEXT_REQUIRED` para header ausente, 400/`INVALID_ORGANIZATION_CONTEXT` para UUID inválido ou múltiplos valores e uma resposta uniforme 403/`ORGANIZATION_ACCESS_DENIED` para Membership inexistente, inativa, pertencente a outro User ou Organization inexistente. Nenhuma dessas negativas produz contexto autorizado. APIQ-020 permanece DECIDED; a DEC-065 não trata da autorização posterior de recursos tenant-bound.
+
+### Complemento — DEC-066
+
+Depois de criado `AuthorizedTenantContext`, recurso inexistente, cross-tenant ou fora do scope de visibilidade usa o mesmo contrato 404 no endpoint. Recurso legitimamente visível cuja ação seja negada usa 403/`FORBIDDEN`. Esta rastreabilidade não altera o estado ou a prioridade de APIQ-020.
+
 
 ## APIQ-021 — Granularidade da API do wizard
 
@@ -5314,11 +5338,11 @@ Operações semânticas repetidas devem ser idempotentes ou retornar conflito qu
 
 ## ERRQ-002 — A API utilizará:
 
-**Status:** OPEN  
-**Priority:** MEDIUM  
-**Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md)  
-**Affected Delivery:** API / Error Catalog / frontend  
-**Blocks:** implementar a decisão «A API utilizará:» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Status:** DECIDED
+**Priority:** MEDIUM
+**Affected Documents:** [07-API.md](07-API.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md)
+**Affected Delivery:** API / Error Catalog / frontend
+**Blocks:** nenhum bloqueio pendente nesta questão; aplicar DEC-063
 
 ### Question
 
@@ -5336,15 +5360,27 @@ para transport validation e:
 
 para domain/business validation?
 
+### Decision
+
+DEC-063: usar 400 para falhas estruturais ou de transporte e 422 para violações de domínio, negócio ou workflow. 401, 403, 404, 409 e 500 permanecem reservados aos seus contratos específicos.
+
+### Rationale
+
+Separar requests estruturalmente inválidas de requests válidas que não satisfazem regras semânticas, sem reclassificar autenticação, autorização, inexistência, conflito ou falha interna.
+
+### Decision Date
+
+2026-10-02
+
 ---
 
 ## ERRQ-003 — As mensagens retornadas pelo backend serão:
 
-**Status:** OPEN  
-**Priority:** LOW  
-**Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md)  
-**Affected Delivery:** API / Error Catalog / frontend  
-**Blocks:** implementar a decisão «As mensagens retornadas pelo backend serão:» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Status:** DECIDED
+**Priority:** LOW
+**Affected Documents:** [07-API.md](07-API.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md)
+**Affected Delivery:** API / Error Catalog / frontend
+**Blocks:** nenhum bloqueio pendente nesta questão; aplicar DEC-064
 
 ### Question
 
@@ -5364,15 +5400,27 @@ Portuguese
 
 diretamente pela API?
 
+### Decision
+
+DEC-064: mensagens públicas da API em português; `error.code` estável, em inglês e `UPPER_SNAKE_CASE`; frontend depende do código, não da mensagem. Detalhes técnicos e internos não são expostos.
+
+### Rationale
+
+Alinhar a API ao público inicial e à DEC-061, preservando códigos independentes do idioma e evolução futura da tradução no frontend.
+
+### Decision Date
+
+2026-10-02
+
 ---
 
 ## ERRQ-004 — Qual política será utilizada para diferenciar:
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** MEDIUM  
-**Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md)  
+**Affected Documents:** [07-API.md](07-API.md), [09-SECURITY.md](09-SECURITY.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [19-ERROR-CATALOG.md](19-ERROR-CATALOG.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md), [AUTH.md](features/AUTH.md), [ORGANIZATIONS.md](features/ORGANIZATIONS.md)
 **Affected Delivery:** API / Error Catalog / frontend  
-**Blocks:** implementar a decisão «Qual política será utilizada para diferenciar:» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** nenhum bloqueio pendente nesta questão; aplicar DEC-066
 
 ### Question
 
@@ -5389,6 +5437,18 @@ e:
 ```
 
 em recursos fora do scope do usuário, mas dentro da mesma Organization?
+
+### Decision
+
+DEC-066: depois de criado `AuthorizedTenantContext`, retornar 404 quando o usuário não puder confirmar a existência do recurso, tornando indistinguíveis recurso inexistente, cross-tenant e fora do scope de visibilidade. Retornar 403/`FORBIDDEN` somente quando o recurso for legitimamente visível, mas a ação não for autorizada.
+
+### Rationale
+
+Impedir enumeração cross-tenant e IDOR sem confundir falta de visibilidade com negação de uma ação sobre recurso conhecido legitimamente.
+
+### Decision Date
+
+2026-10-02
 
 ---
 

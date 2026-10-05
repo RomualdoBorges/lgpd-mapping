@@ -45,7 +45,7 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity e Session são globais, sem organization_id artificial nem acesso runtime irrestrito. DEC-052 aprovou o bootstrap restrito: authenticatedUserId + requestedOrganizationId consulta somente a Membership própria ativa ou ausência; apenas então authorizedOrganizationId pode chegar a withTenant(), onde concessões/scopes são carregados sob RLS. DEC-054 transportará requestedOrganizationId pelo header `X-Organization-Id` em requests tenant-bound; cada request deverá validar novamente o vínculo, sem Organization atual autoritativa na Session. Na S3.2, a fundação PostgreSQL da DEC-056 foi implementada por `auth_private.resolve_membership`, com owner NOLOGIN dedicado, policy bootstrap separada sob FORCE RLS, retorno somente membershipId + organizationId e repository sem leitura direta de `memberships`. O pipeline HTTP, AuthenticatedContext e a autorização por RoleAssignment/BusinessUnit ainda não foram implementados.
+User, ExternalIdentity e Session são globais, sem organization_id artificial nem acesso runtime irrestrito. DEC-052 aprovou o bootstrap restrito: authenticatedUserId + requestedOrganizationId consulta somente a Membership própria ativa ou ausência; apenas então authorizedOrganizationId pode chegar a withTenant(), onde concessões/scopes são carregados sob RLS. DEC-054 transporta requestedOrganizationId pelo header `X-Organization-Id` em requests tenant-bound; cada request valida novamente o vínculo, sem Organization atual autoritativa na Session. DEC-062 separa `AuthenticatedIdentity` de `AuthorizedTenantContext`, que contém somente membershipId + authorizedOrganizationId. Pela DEC-065, header ausente ou estruturalmente inválido retorna 400 com código específico, enquanto Membership inexistente, inativa, pertencente a outro User ou Organization inexistente retorna uniformemente 403/`ORGANIZATION_ACCESS_DENIED`, sem revelar a causa. Na S3.2, a fundação PostgreSQL da DEC-056 foi implementada por `auth_private.resolve_membership`, com owner NOLOGIN dedicado, policy bootstrap separada sob FORCE RLS, retorno somente membershipId + organizationId e repository sem leitura direta de `memberships`. O pipeline HTTP tenant até `AuthorizedTenantContext` e sua integração com `withTenant()` ainda não foram implementados; autorização por RoleAssignment/BusinessUnit permanece posterior.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -1992,6 +1992,8 @@ Não informar:
 ```text
 "Esse recurso pertence à Empresa B"
 ```
+
+Pela DEC-066, o mesmo contrato 404 deve ser apresentado para recurso inexistente, de outro tenant ou fora do scope de visibilidade dentro do tenant autorizado. Somente recurso legitimamente visível com ação não autorizada retorna 403/`FORBIDDEN`. Conhecer o UUID não altera essa política.
 
 ---
 

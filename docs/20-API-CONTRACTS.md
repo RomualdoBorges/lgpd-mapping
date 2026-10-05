@@ -31,6 +31,8 @@ A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação
 
 OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
 
+Pelas DEC-062/065, `X-Organization-Id` é apenas requestedOrganizationId. Resultado positivo de `resolve_membership()` produz separadamente `AuthorizedTenantContext` com somente membershipId + authorizedOrganizationId. Header ausente usa 400/`ORGANIZATION_CONTEXT_REQUIRED`; UUID inválido ou múltiplos valores usam 400/`INVALID_ORGANIZATION_CONTEXT`; toda negativa de autorização do bootstrap usa a mesma resposta 403/`ORGANIZATION_ACCESS_DENIED`, sem revelar existência ou estado de Organization/Membership.
+
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
 
@@ -1407,7 +1409,7 @@ Formato:
 {
   "error": {
     "code": "PROCESSING_ACTIVITY_NOT_FOUND",
-    "message": "Processing activity not found",
+    "message": "Atividade de tratamento não encontrada.",
     "requestId": "req_123"
   }
 }
@@ -1417,11 +1419,13 @@ Formato:
 
 # 77. Validation Error
 
+Conforme DEC-063, falhas estruturais ou de transporte usam 400. Violações de domínio, negócio ou workflow em requests estruturalmente válidas usam 422. Conforme DEC-064, mensagens públicas são escritas em português e o cliente depende do código estável em inglês e `UPPER_SNAKE_CASE`.
+
 ```json
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
+    "message": "Falha na validação da requisição",
     "requestId": "req_123",
     "details": [
       {
@@ -1443,7 +1447,7 @@ Exemplo:
 {
   "error": {
     "code": "ACTIVITY_SUBMIT_REQUIREMENTS_NOT_MET",
-    "message": "Processing activity cannot be submitted",
+    "message": "A atividade de tratamento não pode ser submetida",
     "requestId": "req_123",
     "details": {
       "issues": [
@@ -1456,6 +1460,57 @@ Exemplo:
   }
 }
 ```
+
+---
+
+# 78.1 Tenant Bootstrap Errors
+
+Header tenant ausente:
+
+```http
+HTTP/1.1 400 Bad Request
+```
+
+```json
+{
+  "error": {
+    "code": "ORGANIZATION_CONTEXT_REQUIRED",
+    "message": "A organização da requisição é obrigatória."
+  }
+}
+```
+
+UUID inválido ou múltiplos valores:
+
+```http
+HTTP/1.1 400 Bad Request
+```
+
+```json
+{
+  "error": {
+    "code": "INVALID_ORGANIZATION_CONTEXT",
+    "message": "Contexto de organização inválido."
+  }
+}
+```
+
+Membership inexistente, inativa, pertencente a outro User ou Organization inexistente:
+
+```http
+HTTP/1.1 403 Forbidden
+```
+
+```json
+{
+  "error": {
+    "code": "ORGANIZATION_ACCESS_DENIED",
+    "message": "Acesso à organização não autorizado."
+  }
+}
+```
+
+A causa interna não é exposta e nenhum resultado negativo produz contexto tenant autorizado.
 
 ---
 
@@ -1477,13 +1532,15 @@ stack traces
 
 # 80. Not Found
 
+Conforme DEC-066, o contrato 404 abaixo também representa, no mesmo endpoint, recurso cross-tenant ou fora do scope de visibilidade. O cliente não recebe indicação da causa. Endpoints tipados reutilizam o código `*_NOT_FOUND` já aprovado; `RESOURCE_NOT_FOUND` é o fallback genérico. Recurso legitimamente visível cuja ação seja negada retorna 403/`FORBIDDEN` e `Ação não autorizada.`.
+
 Exemplo:
 
 ```json
 {
   "error": {
     "code": "PROCESSING_ACTIVITY_NOT_FOUND",
-    "message": "Processing activity not found",
+    "message": "Atividade de tratamento não encontrada.",
     "requestId": "req_123"
   }
 }
@@ -2745,7 +2802,7 @@ Response:
 {
   "error": {
     "code": "ACTIVITY_ACTIVATION_REQUIREMENTS_NOT_MET",
-    "message": "Processing activity cannot be activated",
+    "message": "A atividade de tratamento não pode ser ativada",
     "requestId": "req_123",
     "details": {
       "issues": [
@@ -2773,7 +2830,7 @@ Response:
 {
   "error": {
     "code": "CONCURRENT_MODIFICATION",
-    "message": "The resource was modified by another operation",
+    "message": "O recurso foi alterado por outra operação",
     "requestId": "req_123"
   }
 }
@@ -2805,7 +2862,7 @@ Response:
 {
   "error": {
     "code": "PROCESSING_ACTIVITY_NOT_FOUND",
-    "message": "Processing activity not found",
+    "message": "Atividade de tratamento não encontrada.",
     "requestId": "req_123"
   }
 }
@@ -2820,6 +2877,8 @@ resource name
 
 resource owner
 ```
+
+O mesmo status, código, mensagem e formato também se aplicam quando o recurso pertence ao tenant autorizado, mas está fora do scope de visibilidade. Não fazer lookup global para diferenciar as condições.
 
 ---
 

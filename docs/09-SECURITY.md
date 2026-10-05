@@ -32,7 +32,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -308,6 +308,8 @@ em vez de revelar:
 Esse recurso pertence a outra organização.
 ```
 
+Pela DEC-066, após `AuthorizedTenantContext`, o mesmo contrato 404 do endpoint deve cobrir recurso inexistente, cross-tenant e fora do scope de visibilidade. Conhecer o UUID não concede visibilidade. A busca deve permanecer limitada ao tenant e scope autorizados, sem lookup global para diferenciar publicamente a causa. Usar 403 somente quando o recurso for legitimamente visível e apenas a ação estiver negada.
+
 ---
 
 # 10. Autenticação
@@ -391,9 +393,11 @@ proteção contra reutilização indevida
 
 O mecanismo depende da estratégia de autenticação.
 
-Pela DEC-060, somente após validar a Session o mecanismo de autenticação cria `AuthenticatedIdentity`, contendo exclusivamente `sessionId` e `authenticatedUserId`. O valor pode existir temporariamente na request HTTP, mas o controller o passa explicitamente à aplicação. Application, domain e repositories não descobrem identidade ou tenant por `Request`, provider request-scoped, AsyncLocalStorage ou estado global. Organization, Membership e autorização permanecem em fases posteriores.
+Pela DEC-060, somente após validar a Session o mecanismo de autenticação cria `AuthenticatedIdentity`, contendo exclusivamente `sessionId` e `authenticatedUserId`. O valor pode existir temporariamente na request HTTP, mas o controller o passa explicitamente à aplicação. Pela DEC-062, `AuthorizedTenantContext` é um contrato separado, criado somente após resolução positiva de `resolve_membership()` e contendo apenas `membershipId` e `authorizedOrganizationId`. O requestedOrganizationId do cliente não é copiado diretamente para o contexto autorizado. Application, domain e repositories não descobrem identidade ou tenant por `Request`, provider request-scoped, AsyncLocalStorage ou estado global; os contratos necessários são passados explicitamente.
 
 Pela DEC-061, endpoint protegido retorna sempre 401 com `AUTHENTICATION_REQUIRED` para cookie ausente/inválido ou Session inexistente, expirada ou revogada. A causa específica permanece interna e nunca inclui segredo, cookie, digest ou header `Cookie`. Cookie ausente não é removido; cookie presente que não autentica é expirado conforme o perfil da DEC-059, sem revogação server-side. Endpoints públicos não rejeitam ou limpam cookies apenas por ausência ou invalidade.
+
+Pela DEC-065, o bootstrap tenant usa 400 para header ausente, UUID inválido ou múltiplos valores e responde uniformemente 403/`ORGANIZATION_ACCESS_DENIED` quando Membership inexiste, está inativa, pertence a outro User ou a Organization inexiste. A resposta nunca distingue essas causas e nenhum resultado negativo produz `AuthorizedTenantContext` ou inicia `withTenant()`.
 
 ---
 
@@ -460,6 +464,8 @@ Não apenas decodificar o token.
 
 # 18. Refresh Token
 
+Esta seção se refere somente a eventual token do IdP. Pela DEC-068, não existe refresh ou renovação automática da Session local.
+
 Caso exista refresh token:
 
 ```text
@@ -488,7 +494,9 @@ A decisão depende do modelo de autenticação escolhido.
 
 # 20. Logout
 
-Logout deve invalidar a sessão de acordo com o mecanismo utilizado.
+Pela DEC-069, o logout da Session atual identifica a Session autenticada, revoga e confirma server-side, remove o cookie conforme DEC-059 e responde 204. A revogação precede a remoção do cookie e preserva o primeiro `revokedAt`. Requests já autenticadas podem terminar; novas autenticações após o commit recebem o 401 da DEC-061.
+
+Pelas DEC-067/068, a Session possui limite absoluto padrão de 12 horas e idle timeout de 30 minutos, sem sliding expiration ou renovação automática. `lastActivityAt` somente decorre de request autenticada válida; sua persistência é throttled em cinco minutos e nunca ocorre periodicamente sem requests.
 
 Não tratar logout exclusivamente como:
 

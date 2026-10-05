@@ -3331,6 +3331,386 @@ Esta decisão não define login, callback OIDC, logout, provider OIDC, mecanismo
 
 ---
 
+# DEC-062 — Contexto tenant autorizado separado da identidade
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+APIQ-020, quanto ao contrato produzido após a resolução positiva da Membership. Complementa DEC-043, DEC-052, DEC-054, DEC-056 e DEC-060 sem alterar seus estados.
+
+## Context
+
+A S3.4 precisa representar o resultado da autorização tenant da request sem modificar `AuthenticatedIdentity`, duplicar a identidade global ou antecipar roles, permissions e Business Units.
+
+## Decision
+
+Adotar um contrato separado:
+
+```ts
+type AuthorizedTenantContext = Readonly<{
+  membershipId: string;
+  authorizedOrganizationId: string;
+}>;
+```
+
+`AuthenticatedIdentity` permanece inalterada e contém somente `sessionId` e `authenticatedUserId`. `AuthorizedTenantContext` representa exclusivamente o resultado da autorização tenant da request. `membershipId` somente pode vir de resolução positiva de `resolve_membership()`, e `authorizedOrganizationId` somente pode vir do resultado autorizado desse bootstrap.
+
+`X-Organization-Id` continua sendo apenas `requestedOrganizationId`. Seu valor não pode ser copiado diretamente para `authorizedOrganizationId` antes da resolução positiva da Membership.
+
+`AuthorizedTenantContext` não contém `sessionId`, `authenticatedUserId`, `AuthenticatedIdentity` aninhada, `requestedOrganizationId`, roles, permissions, Business Units, `Request`, `Response`, transaction ou conexão de banco. Os campos de `AuthenticatedIdentity` não são duplicados no contexto tenant. Controllers e application/use cases podem receber os dois contratos separadamente quando necessário.
+
+Repositories não descobrem identidade ou tenant implicitamente por `Request`, Session, estado global, AsyncLocalStorage ou mecanismo equivalente. Recebem os parâmetros e contextos necessários explicitamente.
+
+## Rationale
+
+Preservar a separação entre identidade global autenticada e autorização tenant atual, impedir que o valor solicitado pelo cliente adquira autoridade antes do bootstrap e manter visíveis as dependências de segurança nas assinaturas da aplicação.
+
+## Consequences
+
+A S3.4 pode compor `AuthorizedTenantContext` somente após `resolve_membership()` retornar positivamente e pode então usar `authorizedOrganizationId` para iniciar `withTenant()`. Trocar a Organization solicitada entre requests exige nova resolução; nenhum contexto é congelado na Session.
+
+Esta decisão não define status HTTP, `error.code` ou mensagem para `X-Organization-Id` ausente, UUID inválido, múltiplos valores, Membership inexistente/inativa ou Organization inexistente. Não decide 400 versus 422, não amplia a distinção HTTP já aprovada, não define roles, scopes, permissions, S3.5, OIDC, `/me` ou frontend e não autoriza implementação nesta etapa.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md e features/AUTH.md.
+
+---
+
+
+# DEC-063 — Status HTTP para validação estrutural e de negócio
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+ERRQ-002, integralmente.
+
+## Context
+
+A documentação previa 400 e 422, mas ainda não separava de forma normativa falhas de estrutura/transporte de violações semânticas de domínio, negócio ou workflow.
+
+## Decision
+
+Usar `400 Bad Request` quando a request não puder ser aceita estruturalmente: JSON inválido, campo ou parâmetro estrutural obrigatório ausente, tipo ou formato inválido, header obrigatório ausente, UUID inválido ou valores múltiplos onde apenas um valor é permitido.
+
+Usar `422 Unprocessable Entity` quando a request for estruturalmente válida, mas violar regra de domínio, negócio ou workflow.
+
+`401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict` e `500 Internal Server Error` permanecem reservados aos seus contratos específicos. Falhas de autenticação, autorização, inexistência, conflito ou infraestrutura não são convertidas em 422.
+
+## Rationale
+
+Separar erro de transporte/estrutura de rejeição semântica torna o contrato previsível para clientes sem confundir autorização ou inexistência com validação de negócio.
+
+## Consequences
+
+Headers tenant ausentes, UUIDs inválidos e múltiplos valores são falhas 400. A resposta de autorização tenant negativa é definida separadamente pela DEC-065. Esta Decision não resolve ERRQ-003, ERRQ-004 nem códigos ou mensagens específicos de features.
+
+## Affected Documents
+
+07-API.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 19-ERROR-CATALOG.md e 20-API-CONTRACTS.md.
+
+---
+
+# DEC-064 — Mensagens públicas da API em português
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+ERRQ-003, integralmente.
+
+## Context
+
+Os documentos continham exemplos públicos em inglês e português. O cliente precisa de mensagens consistentes sem acoplar seu comportamento ao texto apresentado.
+
+## Decision
+
+Mensagens públicas retornadas pela API são escritas em português. `error.code` permanece estável, em inglês e `UPPER_SNAKE_CASE`. O frontend depende de `error.code`, nunca da comparação de `message`, e pode futuramente substituir a mensagem pela tradução da interface.
+
+Detalhes técnicos e internos, incluindo stack trace, SQL, caminhos internos, secrets e causas que ampliem exposição de segurança, não são incluídos na resposta pública.
+
+## Rationale
+
+Alinhar as mensagens ao público inicial do produto e ao contrato já aprovado na DEC-061, preservando códigos estáveis e independentes do idioma para automação e evolução futura.
+
+## Consequences
+
+Exemplos públicos em inglês nos documentos afetados devem ser harmonizados para português. Nomes de códigos e identificadores técnicos permanecem em inglês. Esta Decision não define códigos, status ou mensagens específicos de cada feature e não resolve ERRQ-002 ou ERRQ-004.
+
+## Affected Documents
+
+07-API.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 19-ERROR-CATALOG.md e 20-API-CONTRACTS.md.
+
+---
+
+# DEC-065 — Contrato HTTP do bootstrap tenant
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+APIQ-020, somente quanto ao contrato HTTP da S3.4. Complementa DEC-052, DEC-054, DEC-056, DEC-062, DEC-063 e DEC-064 sem alterar seus estados e não resolve ERRQ-004.
+
+## Context
+
+A S3.4 precisa rejeitar entradas estruturais inválidas e resultados negativos de autorização tenant sem transformar `X-Organization-Id` em autoridade ou revelar se Organization ou Membership existem e qual estado possuem.
+
+## Decision
+
+Em endpoint tenant-bound, ausência de `X-Organization-Id` retorna:
+
+```http
+HTTP/1.1 400 Bad Request
+```
+
+```json
+{
+  "error": {
+    "code": "ORGANIZATION_CONTEXT_REQUIRED",
+    "message": "A organização da requisição é obrigatória."
+  }
+}
+```
+
+UUID inválido ou múltiplos valores de `X-Organization-Id` retornam:
+
+```http
+HTTP/1.1 400 Bad Request
+```
+
+```json
+{
+  "error": {
+    "code": "INVALID_ORGANIZATION_CONTEXT",
+    "message": "Contexto de organização inválido."
+  }
+}
+```
+
+Após validação estrutural e autenticação válida, todos estes resultados negativos do bootstrap tenant retornam exatamente a mesma resposta pública: Membership inexistente, Membership inativa, Organization inexistente ou Membership pertencente a outro User.
+
+```http
+HTTP/1.1 403 Forbidden
+```
+
+```json
+{
+  "error": {
+    "code": "ORGANIZATION_ACCESS_DENIED",
+    "message": "Acesso à organização não autorizado."
+  }
+}
+```
+
+A API não revela externamente qual condição interna causou a negação. Nenhum resultado negativo produz `AuthorizedTenantContext` ou inicia `withTenant()`.
+
+## Rationale
+
+Aplicar a distinção estrutural da DEC-063, preservar a mensagem pública em português da DEC-064 e impedir enumeração de Organizations, Memberships ou seus estados conforme DEC-052/056.
+
+## Consequences
+
+`MEMBERSHIP_NOT_FOUND` e `MEMBERSHIP_INACTIVE` não representam falhas do bootstrap tenant. O contrato uniforme desta Decision é anterior a roles, permissions e scopes. ERRQ-004 permanece OPEN para recursos fora do scope dentro de uma Organization já autorizada.
+
+Esta Decision não define OIDC, `/me`, S3.5, permission matrix, frontend ou comportamento administrativo futuro de Memberships.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 19-ERROR-CATALOG.md, 20-API-CONTRACTS.md, features/AUTH.md e features/ORGANIZATIONS.md.
+
+---
+
+# DEC-066 — Política 403/404 para recursos tenant-bound
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+ERRQ-004, integralmente.
+
+## Context
+
+Depois de criado `AuthorizedTenantContext`, a API ainda precisa distinguir ausência de recurso de falta de autorização sem permitir enumeração de recursos cross-tenant ou fora do scope de visibilidade. Conhecer, fornecer ou adivinhar um UUID não concede visibilidade.
+
+## Decision
+
+Retornar `404 Not Found` quando a política de autorização não permitir ao usuário confirmar a existência do recurso. Dentro do mesmo endpoint, recurso inexistente, recurso pertencente a outra Organization, recurso pertencente à Organization autorizada mas fora do scope de visibilidade e recurso cujo UUID seja conhecido sem autorização de visibilidade são publicamente indistinguíveis.
+
+Em endpoint tipado, reutilizar o código `*_NOT_FOUND` específico já aprovado para o recurso. Por exemplo:
+
+```json
+{
+  "error": {
+    "code": "PROCESSING_ACTIVITY_NOT_FOUND",
+    "message": "Atividade de tratamento não encontrada."
+  }
+}
+```
+
+O mesmo contrato é usado quando a atividade inexiste, pertence a outra Organization ou está fora do scope de visibilidade no tenant autorizado. Quando não houver contrato específico aprovado para o tipo, usar `RESOURCE_NOT_FOUND` como fallback genérico. Esta Decision não cria novos códigos `*_NOT_FOUND`.
+
+Retornar `403 Forbidden` somente quando o recurso pertence ao tenant autorizado, sua existência pode ser legitimamente conhecida pelo usuário, mas a ação solicitada não é autorizada:
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Ação não autorizada."
+  }
+}
+```
+
+Códigos mais específicos de autorização somente podem ser usados quando não revelarem informação que a política de visibilidade determine como não revelável. `RESOURCE_SCOPE_DENIED`, `BUSINESS_UNIT_NOT_ALLOWED` e `FILE_ACCESS_DENIED` não podem revelar a existência de recurso oculto.
+
+Recurso inexistente, cross-tenant e fora do scope de visibilidade compartilham, dentro do mesmo endpoint, status HTTP, `error.code`, `message` e formato público da resposta. A API não expõe Organization proprietária, Business Unit, owner, existência, estado interno ou motivo interno da negação e não realiza lookup global apenas para distinguir publicamente essas condições.
+
+A ordem conceitual é:
+
+```text
+AuthenticatedIdentity
+→ AuthorizedTenantContext
+→ busca tenant-aware limitada ao scope de visibilidade
+→ recurso não localizado/visível: 404
+→ recurso visível
+→ verificar autorização da ação
+→ ação negada: 403
+→ validar domínio/negócio/workflow
+```
+
+## Rationale
+
+Preservar isolamento tenant, evitar IDOR e enumeração de recursos e ainda distinguir falta de visibilidade de negação de uma ação sobre recurso legitimamente visível.
+
+## Consequences
+
+`401` continua reservado à autenticação conforme DEC-061; falha estrutural continua em 400 e violação de domínio, negócio ou workflow em 422 conforme DEC-063; mensagens públicas permanecem em português conforme DEC-064; `ORGANIZATION_ACCESS_DENIED` continua exclusivo do bootstrap tenant conforme DEC-065. Esta Decision aplica-se somente depois da criação de `AuthorizedTenantContext`.
+
+Esta Decision não define matriz de permissions, scopes concretos por role, quais roles visualizam cada recurso, autorização específica de arquivos ou Business Units, contratos de referências inválidas em mutations ou comportamento administrativo especial.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 19-ERROR-CATALOG.md, 20-API-CONTRACTS.md, 28-PRE-IMPLEMENTATION-CHECKLIST.md, features/AUTH.md e features/ORGANIZATIONS.md.
+
+---
+
+# DEC-067 — Validade temporal e atividade da Session
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+SECQ-004, quanto à duração absoluta, idle timeout e persistência de atividade. Complementa DEC-042, DEC-053, DEC-057 e DEC-061.
+
+## Context
+
+A Session já possui `createdAt`, `expiresAt` e `revokedAt`, mas faltavam os valores temporais concretos e a política de atividade necessária para aplicar inatividade sem depender de estado em memória ou produzir escrita a cada request.
+
+## Decision
+
+Toda Session possui `expiresAt`. A duração absoluta padrão é de 12 horas, calculada como `expiresAt = createdAt + 12 horas`. `expiresAt` representa o limite absoluto, não é estendido durante a vida da Session e `now >= expiresAt` torna a Session inválida. Expiração temporal não preenche `revokedAt`.
+
+O idle timeout padrão é de 30 minutos. O modelo passa a exigir conceitualmente `lastActivityAt`; na criação, `lastActivityAt = createdAt`. A Session é inválida quando `now >= lastActivityAt + 30 minutos`. Expiração absoluta e por inatividade produzem o mesmo contrato público 401/`AUTHENTICATION_REQUIRED` da DEC-061.
+
+Conta como atividade uma request a endpoint protegido cuja Session tenha sido validada com sucesso, mesmo que depois da autenticação ela termine em 400, 403, 404, 409, 422 ou 500. Não contam como atividade: cookie ausente, inválido ou malformado; Session inexistente, já expirada ou revogada; e endpoint público que não autentica Session.
+
+`lastActivityAt` somente pode ser atualizado em decorrência de request autenticada válida. A persistência é throttled: se menos de cinco minutos se passaram desde o timestamp persistido, nenhuma escrita é necessária; se cinco minutos ou mais se passaram, a request pode avançar `lastActivityAt` para o instante corrente. Ausência de requests nunca gera atualização periódica. A atualização deve ser condicional, segura para concorrência, nunca regredir e usar o estado persistido compartilhado, sem depender da memória do processo; múltiplas instâncias observam esse mesmo estado.
+
+Os valores são configuração validada, com defaults de 12 horas, 30 minutos e cinco minutos. Exigir: absolute lifetime > 0; idle timeout > 0; activity persistence interval > 0; activity persistence interval < idle timeout; idle timeout <= absolute lifetime.
+
+A implementação futura adicionará `last_activity_at TIMESTAMPTZ NOT NULL`, com backfill esperado `last_activity_at = created_at`. `expires_at` continua sendo o limite absoluto; não adicionar `absolute_expires_at`, refresh token, device ID, remember-me ou contador de renovação. Esta Decision não determina o SQL final e preserva a DEC-057: runtime não recebe DML direto em Sessions.
+
+## Rationale
+
+Limitar a exposição de Sessions abandonadas, preservar um limite absoluto previsível e evitar write amplification sem introduzir estado local por instância.
+
+## Consequences
+
+Schema, primitive restrita, repository e boundary precisarão evoluir posteriormente para persistir e avaliar `lastActivityAt`. Testes usarão tempo controlável e cobrirão limites, throttling e concorrência. `lastActivityAt` é o termo canônico para a atividade usada pelo idle timeout; referências históricas a `lastSeenAt` na DEC-053 permanecem históricas.
+
+Esta Decision não define fornecedor OIDC, MFA, geração/bytes/encoding do `sessionSecret`, refresh token do IdP, logout global, gerenciamento de dispositivos, limite de Sessions, remember-me ou UI de Sessions.
+
+## Affected Documents
+
+03-DATABASE.md, 07-API.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md, 21-DATA-DICTIONARY.md, 26-RELEASE-CHECKLIST.md e features/AUTH.md.
+
+---
+
+# DEC-068 — Sem renovação automática da Session local
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+SECQ-004, quanto à renovação. Complementa DEC-042, DEC-053, DEC-058 e DEC-067.
+
+## Context
+
+Era necessário separar a renovação da Session local dos tokens e da sessão mantidos pelo IdP e impedir que atividade transforme a Session local em credencial indefinidamente renovável.
+
+## Decision
+
+Não existe sliding expiration. Atividade não altera `expiresAt`, a mesma Session não é renovada automaticamente e `sessionSecret` não é rotacionado automaticamente por atividade. Esta política não cria endpoint de refresh da Session local, não exige refresh token do IdP para mantê-la e não consulta o IdP a cada request.
+
+Após expiração absoluta ou por inatividade, a Session local permanece inválida. Criar uma nova Session local exige passar novamente pelo fluxo de autenticação. Se a sessão do IdP ainda estiver ativa, o IdP pode concluir esse novo fluxo sem necessariamente solicitar credenciais novamente; isso não renova nem reativa a Session local anterior.
+
+## Rationale
+
+Manter o lifecycle local simples, limitado e independente do lifecycle do IdP, evitando extensão silenciosa, rotação concorrente do segredo e um protocolo de refresh sem requisito aprovado.
+
+## Consequences
+
+Não existe endpoint local de renovação. Esta Decision não define refresh token do IdP, fornecedor OIDC, duração da sessão do IdP ou rotação periódica de `sessionSecret`.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md, 26-RELEASE-CHECKLIST.md e features/AUTH.md.
+
+---
+
+# DEC-069 — Logout e revogação da Session atual
+
+**Status:** DECIDED
+**Decision Date:** 2026-10-02
+
+## Related Questions
+
+SECQ-004, quanto à revogação operacional e ao logout da Session atual. Complementa DEC-053, DEC-055, DEC-057, DEC-059 e DEC-061.
+
+## Context
+
+A revogação idempotente já existe na fronteira PostgreSQL e a DEC-055 exige invalidação server-side antes da remoção do cookie, mas faltava o contrato operacional e HTTP do logout da Session atual.
+
+## Decision
+
+O logout da Session atual segue esta ordem: identificar a Session autenticada atual; revogar server-side; confirmar a revogação; remover o cookie conforme DEC-059; responder `204 No Content`. A revogação server-side ocorre antes da remoção do cookie.
+
+`revokedAt` permanece idempotente: nova revogação não substitui o primeiro timestamp. Request que tentar autenticar depois do commit da revogação recebe o contrato 401 da DEC-061. Request que já concluiu a autenticação antes da revogação pode terminar normalmente; o logout não promete cancelar requests já em execução.
+
+DEC-053 continua permitindo múltiplas Sessions simultâneas. O logout normal revoga somente a Session atual.
+
+## Rationale
+
+Garantir invalidação efetiva no servidor, remoção coerente do cookie e comportamento concorrente honesto sem ampliar o logout para funções administrativas.
+
+## Consequences
+
+A implementação futura adicionará o endpoint de logout da Session atual, usando a primitive restrita existente e sem expor segredo ou digest. Esta Decision não inclui logout de todos os dispositivos, revogação administrativa global, logout global no IdP, UI de Sessions, limite de Sessions simultâneas ou identificação de dispositivo.
+
+## Affected Documents
+
+07-API.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md, 26-RELEASE-CHECKLIST.md e features/AUTH.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -3396,6 +3776,14 @@ Esta decisão não define login, callback OIDC, logout, provider OIDC, mecanismo
 | DEC-059 | Perfis fixos do cookie de Session por ambiente |
 | DEC-060 | Identidade autenticada explícita no boundary e na aplicação |
 | DEC-061 | Falha uniforme de autenticação da Session |
+| DEC-062 | Contexto tenant autorizado separado da identidade |
+| DEC-063 | Status HTTP para validação estrutural e de negócio |
+| DEC-064 | Mensagens públicas da API em português |
+| DEC-065 | Contrato HTTP do bootstrap tenant |
+| DEC-066 | Política 403/404 para recursos tenant-bound |
+| DEC-067 | Validade temporal e atividade da Session |
+| DEC-068 | Sem renovação automática da Session local |
+| DEC-069 | Logout e revogação da Session atual |
 
 ---
 
