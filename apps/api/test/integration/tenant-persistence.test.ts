@@ -510,8 +510,8 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     );
     try {
       const service = app.get(DatabaseService);
-      const result = await service.withTenant(
-        A,
+      const result = await service.withAuthorizedTenant(
+        { membershipId: M_A, authorizedOrganizationId: A },
         async (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) =>
           tx.execute(sql`select id from business_units`),
       );

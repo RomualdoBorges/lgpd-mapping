@@ -4925,7 +4925,7 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 ### Complemento — DEC-052
 
-A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056. DEC-060 define a identidade global mínima, criada após Session válida e passada explicitamente à aplicação, sem Organization, Membership, roles, permissions ou Business Units. O transporte `X-Organization-Id`, a resolução HTTP de Session e a composição do contexto tenant ainda não foram implementados. APIQ-020 permanece DECIDED por DEC-043.
+A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056. A S3.3 implementou a resolução HTTP da Session e `AuthenticatedIdentity`; a S3.4 implementou o transporte por `X-Organization-Id`, o bootstrap de Membership e a composição de `AuthorizedTenantContext` antes de `withTenant()`. Roles, permissions, scopes e a autorização funcional posterior da S3.5 permanecem pendentes. APIQ-020 permanece DECIDED por DEC-043.
 
 ### Complemento — DEC-054
 

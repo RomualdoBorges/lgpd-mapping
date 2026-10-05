@@ -661,6 +661,10 @@ dependendo das decisões finais.
 
 Implementação futura conforme DEC-067/068/069: `expiresAt = createdAt + 12 horas`; `lastActivityAt = createdAt`; idle timeout de 30 minutos; persistência de atividade somente por request autenticada válida, com throttling de cinco minutos e sem atualização periódica; nenhuma extensão automática de `expiresAt` ou endpoint local de refresh; logout da Session atual com revogação confirmada antes da remoção do cookie e resposta 204. A evolução exige migration e adaptação das primitives restritas, sem DML direto do runtime.
 
+## Tenant Request Context implementado
+
+A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. Roles, permissions e Business Units permanecem para a etapa posterior de autorização funcional.
+
 # 28. Authentication
 
 Implementar mecanismo definido em:

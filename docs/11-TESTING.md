@@ -76,6 +76,8 @@ A S3.2 valida o bootstrap PostgreSQL restrito de Membership com 28 cenários da 
 
 O estado validado possui 10 testes unitários e 52 testes de integração em PostgreSQL real. Esses testes não afirmam que o pipeline HTTP da DEC-052 esteja pronto: resolução de Session no request, produção do authenticatedUserId, `X-Organization-Id`, AuthenticatedContext completo e autorização por RoleAssignment/BusinessUnit continuam fora da S3.2. DEC-053 ainda exige integrar o lifecycle ao fluxo HTTP; DEC-054 exige validação independente do header em requests tenant-bound; DEC-055 exige cookie seguro e proteção CSRF para mutações.
 
+A S3.4 acrescenta testes unitários e HTTP/PostgreSQL para validação de `X-Organization-Id`, contratos 400/403, resolução positiva e negativa de Membership, separação entre `AuthenticatedIdentity` e `AuthorizedTenantContext` e abertura de `withTenant()` somente depois da autorização. O estado atual validado possui 37 testes unitários e 82 testes de integração, preservando as regressões das S3.1 a S3.3 e do Slice 2.
+
 ### Testes temporais e de logout da Session
 
 DEC-067 exige testes determinísticos com clock controlado para os limites de 12 horas e 30 minutos, inclusive exatamente no limite; inicialização de `lastActivityAt`; persistência somente após request autenticada válida quando cinco minutos ou mais tiverem passado; ausência de UPDATE dentro da janela; ausência de escrita periódica; não regressão e concorrência entre instâncias. Session inexistente, revogada ou expirada não é tocada.

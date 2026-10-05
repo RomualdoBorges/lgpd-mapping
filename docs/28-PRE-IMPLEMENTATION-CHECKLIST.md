@@ -34,6 +34,7 @@ Há 30 decisões DEC-001 a DEC-030 em [13-DECISIONS.md](13-DECISIONS.md). Elas e
 - [x] SECQ-002, AUTHQ-010 e APIQ-002 decididas pelas DEC-041/042 e decisões complementares de Session/cookie. SECQ-004 foi encerrada pelas DEC-067/068/069: 12 horas de validade absoluta, idle timeout de 30 minutos, persistência de atividade com intervalo de cinco minutos, sem sliding/renovação automática e logout com revogação server-side antes de remover o cookie.
 - [ ] SECQ-001 permanece IN_ANALYSIS quanto ao fornecedor OIDC gerenciado; SECQ-003 permanece OPEN quanto a MFA.
 - [ ] Aprovar permission + scope para as operações da primeira entrega, inclusive criação, edição, Submit, Gate e publicação: AUTHQ-001/002/003/009 e questões específicas relacionadas. AUTHQ-004 já define a leitura de Activities/ROPA no D1; sua parte remanescente e DASHQ-001 tratam de Dashboard, Systems e Suppliers, fora da primeira entrega.
+- [x] Tenant Request Context implementado na S3.4: após `AuthenticatedIdentity`, o boundary valida `X-Organization-Id`, resolve a Membership pelo primitive restrito, cria `AuthorizedTenantContext` somente no resultado positivo e abre `withTenant()` com a Organization autorizada.
 - [ ] Definir criação de organização, convites/provisionamento, administração de memberships e áreas, desligamento de usuário e revogação de acesso.
 - [ ] Resolver ORGQ-001 a ORGQ-005 antes das operações correspondentes: unicidade de área, inativação de área com atividades, permissões de gestão, onboarding e inativação de organização.
 - [x] Aprovar DEC-066: recurso inexistente, cross-tenant ou fora do scope de visibilidade usa o mesmo 404 no endpoint; recurso legitimamente visível com ação negada usa 403. Manter proteção contra enumeração na implementação.
@@ -116,7 +117,7 @@ Systems e Suppliers estão fora da primeira entrega. Os itens abaixo permanecem 
 
 Os Slices 1 e 2 já concluíram frontend/backend iniciais, estrutura modular, lint, typecheck, build, ambiente local, health técnico, PostgreSQL, Drizzle, migrations oficiais, persistência estrutural e defesa tenant-aware. A infraestrutura Vitest e os testes PostgreSQL reais também existem. Fornecedor/configuração de CI permanece pendente.
 
-S3.1 e S3.2 implementaram a persistência global restrita de ExternalIdentity/Session e o bootstrap PostgreSQL restrito de Membership. A S3.3 implementou o boundary HTTP que transforma cookie de Session válido em `AuthenticatedIdentity`, sem antecipar tenant.
+S3.1 e S3.2 implementaram a persistência global restrita de ExternalIdentity/Session e o bootstrap PostgreSQL restrito de Membership. A S3.3 implementou o boundary HTTP que transforma cookie de Session válido em `AuthenticatedIdentity`, sem antecipar tenant. A S3.4 implementou o pipeline HTTP tenant e `AuthorizedTenantContext`, sempre depois de `resolve_membership()`, com abertura de `withTenant()` somente após autorização positiva. Autorização funcional posterior por roles/scopes permanece pendente.
 
 Modelo de negócio, permission matrix, workflow, Compliance Gate específico da entrega, Activity Draft, Mapping Wizard e ROPA ainda dependem das questões correspondentes. O progresso da fundação não transforma essas pendências em decisões de produto.
 
@@ -176,7 +177,7 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial. A proteção restrita de ExternalIdentity/Session foi implementada na S3.1 conforme DEC-057; a descoberta da Membership própria foi implementada na fundação PostgreSQL da S3.2 conforme DEC-056, sem policy irrestrita. O pipeline HTTP tenant e a autorização funcional por roles/scopes permanecem pendentes.
+User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial. A proteção restrita de ExternalIdentity/Session foi implementada na S3.1 conforme DEC-057; a descoberta da Membership própria foi implementada na fundação PostgreSQL da S3.2 conforme DEC-056, sem policy irrestrita. A S3.4 integrou esse bootstrap ao boundary HTTP; autorização funcional por roles/scopes continua pendente.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
