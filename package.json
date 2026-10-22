@@ -1,0 +1,33 @@
+{
+  "name": "lgpd-platform",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.22.3 <23",
+    "pnpm": ">=11.7.0 <12"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @lgpd/api dev",
+    "dev:web": "pnpm --filter @lgpd/web dev",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
+    "db:check": "pnpm --filter @lgpd/api db:check",
+    "lint": "eslint apps scripts",
+    "format": "prettier --write apps scripts infra package.json pnpm-workspace.yaml compose.yaml eslint.config.mjs README.md .prettierrc.json",
+    "format:check": "prettier --check apps scripts infra package.json pnpm-workspace.yaml compose.yaml eslint.config.mjs README.md .prettierrc.json",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:local": "node scripts/smoke.mjs --without-db",
+    "test:unit": "pnpm --filter @lgpd/api test:unit",
+    "test:integration": "pnpm --filter @lgpd/api test:integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.46.0"
+  }
+}
