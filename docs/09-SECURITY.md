@@ -32,7 +32,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -47,7 +47,33 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity e Session são globais, sem organization_id artificial nem acesso runtime irrestrito.
+
+DEC-057 define a fronteira PostgreSQL de ExternalIdentity e Session:
+
+```text
+administrative bootstrap
+→ cria lgpd_auth_persistence
+
+structural migration
+→ cria tabelas, FKs, constraints e índices
+
+administrative auth provisioning
+→ valida a role e configura auth_private/functions/grants
+
+runtime
+→ executa somente os primitives concedidos
+```
+
+`lgpd_auth_persistence` é NOLOGIN e não é concedida ao runtime ou migrator. Runtime não possui DML direto em external_identities, sessions ou users. PUBLIC não possui acesso ao schema privado ou EXECUTE nas functions.
+
+### Criação de primitives SECURITY DEFINER
+
+Quando uma primitive `SECURITY DEFINER` possuir uma role dedicada como owner, o provisionamento administrativo deve, sempre que tecnicamente aplicável, criar/substituir a function sob `SET LOCAL ROLE` da role dedicada, em vez de criá-la como administrador e posteriormente transferir ownership. O estado final não deve exigir membership persistente, `CREATE` persistente ou privilégios administrativos para a role dedicada.
+
+As tabelas globais permanecem sem RLS porque não são tenant-bound. Isso não altera RLS/FORCE RLS das tabelas tenant-bound. Na S3.2, a fundação PostgreSQL da DEC-056 foi implementada por `auth_private.resolve_membership(authenticated_user_id, requested_organization_id)`, com retorno restrito a membershipId + organizationId da Membership ativa correspondente. A function é `SECURITY DEFINER`, pertence à role NOLOGIN `lgpd_membership_bootstrap` e é criada sob `SET LOCAL ROLE` durante provisionamento administrativo, com CREATE em `auth_private` apenas temporário e transacional. Runtime e migrator não são membros da role dedicada; PUBLIC não possui EXECUTE e runtime recebe apenas o EXECUTE específico.
+
+`memberships` continua com ENABLE/FORCE RLS. `tenant_isolation` é direcionada explicitamente ao runtime e `membership_bootstrap_select` aplica-se somente à role dedicada. Essa role recebe apenas SELECT nas colunas `id`, `organization_id`, `user_id` e `active`, sem table-level SELECT, escrita, ownership de `memberships`, BYPASSRLS ou acesso a `users`, `organizations`, `external_identities` e `sessions`. O provisionamento fica separado das migrations e não exigiu migration 0003. A primitive não completa o pipeline HTTP da DEC-052: Session válida, authenticatedUserId, Organization solicitada e contexto autorizado ainda precisam ser ligados pela aplicação.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -282,6 +308,8 @@ em vez de revelar:
 Esse recurso pertence a outra organização.
 ```
 
+Pela DEC-066, após `AuthorizedTenantContext`, o mesmo contrato 404 do endpoint deve cobrir recurso inexistente, cross-tenant e fora do scope de visibilidade. Conhecer o UUID não concede visibilidade. A busca deve permanecer limitada ao tenant e scope autorizados, sem lookup global para diferenciar publicamente a causa. Usar 403 somente quando o recurso for legitimamente visível e apenas a ação estiver negada.
+
 ---
 
 # 10. Autenticação
@@ -365,29 +393,43 @@ proteção contra reutilização indevida
 
 O mecanismo depende da estratégia de autenticação.
 
+Pela DEC-060, somente após validar a Session o mecanismo de autenticação cria `AuthenticatedIdentity`, contendo exclusivamente `sessionId` e `authenticatedUserId`. O valor pode existir temporariamente na request HTTP, mas o controller o passa explicitamente à aplicação. Pela DEC-062, `AuthorizedTenantContext` é um contrato separado, criado somente após resolução positiva de `resolve_membership()` e contendo apenas `membershipId` e `authorizedOrganizationId`. O requestedOrganizationId do cliente não é copiado diretamente para o contexto autorizado. Application, domain e repositories não descobrem identidade ou tenant por `Request`, provider request-scoped, AsyncLocalStorage ou estado global; os contratos necessários são passados explicitamente.
+
+Pela DEC-061, endpoint protegido retorna sempre 401 com `AUTHENTICATION_REQUIRED` para cookie ausente/inválido ou Session inexistente, expirada ou revogada. A causa específica permanece interna e nunca inclui segredo, cookie, digest ou header `Cookie`. Cookie ausente não é removido; cookie presente que não autentica é expirado conforme o perfil da DEC-059, sem revogação server-side. Endpoints públicos não rejeitam ou limpam cookies apenas por ausência ou invalidade.
+
+Pela DEC-065, o bootstrap tenant usa 400 para header ausente, UUID inválido ou múltiplos valores e responde uniformemente 403/`ORGANIZATION_ACCESS_DENIED` quando Membership inexiste, está inativa, pertence a outro User ou a Organization inexiste. A resposta nunca distingue essas causas e nenhum resultado negativo produz `AuthorizedTenantContext` ou inicia `withTenant()`.
+
 ---
 
 # 15. Cookies
 
-Se autenticação utilizar cookie:
+Para o cookie de Session aprovado em DEC-055, a DEC-059 fixa dois perfis.
+
+Desenvolvimento e teste em HTTP:
 
 ```text
-HttpOnly
-Secure
-SameSite
-```
-
-devem ser configurados adequadamente.
-
-Exemplo conceitual:
-
-```text
+name = lgpd_session
 HttpOnly = true
-Secure = true em produção
-SameSite = Lax/Strict conforme arquitetura
+SameSite = Lax
+Path = /
+Secure = false
+Domain ausente
 ```
 
-A escolha final de `SameSite` depende do fluxo de autenticação.
+Produção em HTTPS:
+
+```text
+name = __Host-lgpd_session
+HttpOnly = true
+SameSite = Lax
+Path = /
+Secure = true
+Domain ausente
+```
+
+Os nomes são definidos pelo projeto; não criar `SESSION_COOKIE_NAME` arbitrariamente configurável. O backend seleciona o perfil pelo ambiente e deve falhar explicitamente se produção tentar utilizar parâmetros incompatíveis. O frontend não conhece, lê ou persiste o segredo. `__Host-` acrescenta hardening do navegador, mas não substitui CSRF, CORS, revogação server-side ou os demais requisitos da DEC-055.
+
+O segredo bruto não é persistido, conforme DEC-053. Pela DEC-058, o backend calcula `tokenDigest = SHA-256(sessionSecret)`; somente o digest é persistido e fornecido a `resolve_session`. HMAC, Argon2, novo secret operacional, quantidade de bytes, encoding e geração concreta do segredo não foram adotados nesta etapa.
 
 ---
 
@@ -422,6 +464,8 @@ Não apenas decodificar o token.
 
 # 18. Refresh Token
 
+Esta seção se refere somente a eventual token do IdP. Pela DEC-068, não existe refresh ou renovação automática da Session local.
+
 Caso exista refresh token:
 
 ```text
@@ -450,7 +494,9 @@ A decisão depende do modelo de autenticação escolhido.
 
 # 20. Logout
 
-Logout deve invalidar a sessão de acordo com o mecanismo utilizado.
+Pela DEC-069, o logout da Session atual identifica a Session autenticada, revoga e confirma server-side, remove o cookie conforme DEC-059 e responde 204. A revogação precede a remoção do cookie e preserva o primeiro `revokedAt`. Requests já autenticadas podem terminar; novas autenticações após o commit recebem o 401 da DEC-061.
+
+Pelas DEC-067/068, a Session possui limite absoluto padrão de 12 horas e idle timeout de 30 minutos, sem sliding expiration ou renovação automática. `lastActivityAt` somente decorre de request autenticada válida; sua persistência é throttled em cinco minutos e nunca ocorre periodicamente sem requests.
 
 Não tratar logout exclusivamente como:
 
@@ -729,7 +775,7 @@ Não confiar no HTML enviado pelo cliente.
 
 # 35. CSRF
 
-Se autenticação utilizar cookies enviados automaticamente pelo navegador, proteção CSRF deve ser considerada.
+Operações mutáveis autenticadas por cookie exigem proteção explícita contra CSRF (DEC-055); SameSite=Lax sozinho não é suficiente.
 
 Possíveis mecanismos:
 
@@ -739,7 +785,7 @@ CSRF token
 Origin validation
 ```
 
-A estratégia definitiva depende da arquitetura de autenticação.
+Validar origem confiável e empregar mecanismo CSRF apropriado; a técnica concreta continua para o desenho técnico.
 
 ---
 

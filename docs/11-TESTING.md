@@ -32,7 +32,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -47,7 +47,42 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial.
+
+Os testes da S3.1 devem executar em banco PostgreSQL exclusivo nesta ordem:
+
+```text
+provisionamento administrativo da role
+→ migrations estruturais
+→ provisionamento administrativo de auth_private/primitives
+→ testes com runtime restrito
+```
+
+Devem comprovar:
+
+- schema, FKs, unicidades e múltiplas identidades/sessões;
+- ausência de token bruto e de campos tenant/autorização;
+- ausência de DML direto do runtime;
+- propriedades e memberships da role dedicada;
+- ownership e privilégios de auth_private;
+- SECURITY DEFINER, search_path e EXECUTE dos quatro primitives;
+- retornos mínimos sem token_digest;
+- revogação idempotente preservando o primeiro timestamp;
+- ausência de DELETE;
+- migrations em banco vazio e journal com três migrations;
+- regressão integral dos dez cenários DEC-045/046 do Slice 2.
+
+A S3.2 valida o bootstrap PostgreSQL restrito de Membership com 28 cenários da DEC-056: propriedades e separação das roles; grants mínimos; ausência de acesso às tabelas proibidas; ENABLE/FORCE RLS; policies distintas para runtime e bootstrap; retorno mínimo para vínculo ativo; ausência indistinguível para vínculo ausente, inativo ou Organization inexistente; rejeição de outro User; no máximo uma linha; chamada exclusiva pelo repository; ausência de leitura direta obtida por settings; isolamento por `search_path`; criação sob owner dedicado; CREATE temporário removido; PUBLIC sem EXECUTE; runtime com EXECUTE específico; e provisionamento idempotente e transacional. As regressões de DEC-045/046 e DEC-057 permanecem aprovadas.
+
+O estado validado possui 10 testes unitários e 52 testes de integração em PostgreSQL real. Esses testes não afirmam que o pipeline HTTP da DEC-052 esteja pronto: resolução de Session no request, produção do authenticatedUserId, `X-Organization-Id`, AuthenticatedContext completo e autorização por RoleAssignment/BusinessUnit continuam fora da S3.2. DEC-053 ainda exige integrar o lifecycle ao fluxo HTTP; DEC-054 exige validação independente do header em requests tenant-bound; DEC-055 exige cookie seguro e proteção CSRF para mutações.
+
+A S3.4 acrescenta testes unitários e HTTP/PostgreSQL para validação de `X-Organization-Id`, contratos 400/403, resolução positiva e negativa de Membership, separação entre `AuthenticatedIdentity` e `AuthorizedTenantContext` e abertura de `withTenant()` somente depois da autorização. O estado atual validado possui 37 testes unitários e 82 testes de integração, preservando as regressões das S3.1 a S3.3 e do Slice 2.
+
+### Testes temporais e de logout da Session
+
+DEC-067 exige testes determinísticos com clock controlado para os limites de 12 horas e 30 minutos, inclusive exatamente no limite; inicialização de `lastActivityAt`; persistência somente após request autenticada válida quando cinco minutos ou mais tiverem passado; ausência de UPDATE dentro da janela; ausência de escrita periódica; não regressão e concorrência entre instâncias. Session inexistente, revogada ou expirada não é tocada.
+
+DEC-068 exige comprovar que atividade não estende `expiresAt`, não existe sliding expiration, rotação automática do segredo ou endpoint local de refresh. DEC-069 exige revogação antes da remoção do cookie, 204 no logout, preservação do primeiro `revokedAt`, 401 após o commit e ausência de promessa de cancelamento de request já autenticada. Todos os testes PostgreSQL usam a fronteira restrita da DEC-057.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 

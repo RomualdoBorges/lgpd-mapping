@@ -10,6 +10,15 @@ import pg from 'pg';
 import * as schema from './schema.js';
 import { withTenant, type TenantTransaction } from './tenant-transaction.js';
 import { ENVIRONMENT, type Environment } from '../config/environment.js';
+import {
+  findSessionByTokenDigest,
+  type ResolvedSession,
+} from './auth-repositories.js';
+import {
+  resolveMembership,
+  type ResolvedMembership,
+} from './membership-bootstrap-repository.js';
+import type { AuthorizedTenantContext } from '../tenant/authorized-tenant-context.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -22,11 +31,30 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
     this.database = drizzle(this.pool, { schema });
   }
-  withTenant<T>(
-    organizationId: string,
+  withAuthorizedTenant<T>(
+    context: AuthorizedTenantContext,
     operation: (transaction: TenantTransaction) => Promise<T>,
   ): Promise<T> {
-    return withTenant(this.database, organizationId, operation);
+    return withTenant(
+      this.database,
+      context.authorizedOrganizationId,
+      operation,
+    );
+  }
+  resolveSessionByTokenDigest(
+    tokenDigest: string,
+  ): Promise<ResolvedSession | null> {
+    return findSessionByTokenDigest(this.database, tokenDigest);
+  }
+  resolveMembership(
+    authenticatedUserId: string,
+    requestedOrganizationId: string,
+  ): Promise<ResolvedMembership | null> {
+    return resolveMembership(
+      this.database,
+      authenticatedUserId,
+      requestedOrganizationId,
+    );
   }
   async onModuleInit(): Promise<void> {
     await this.database.execute(sql`select 1`);

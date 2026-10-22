@@ -2,6 +2,17 @@ import { isIP } from 'node:net';
 
 export class ConfigurationError extends Error {}
 
+export type RuntimeMode = 'development' | 'test' | 'production';
+
+function runtimeMode(env: NodeJS.ProcessEnv): RuntimeMode {
+  const value = env.NODE_ENV ?? 'development';
+  if (value !== 'development' && value !== 'test' && value !== 'production')
+    throw new ConfigurationError(
+      'NODE_ENV: use development, test ou production.',
+    );
+  return value;
+}
+
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
   if (!value || value.trim().length === 0)
@@ -45,6 +56,7 @@ export function loadEnvironment(env: NodeJS.ProcessEnv) {
   return {
     host,
     port: port(env, 'API_PORT'),
+    runtimeMode: runtimeMode(env),
     database: databaseConfiguration(env, 'RUNTIME'),
   };
 }

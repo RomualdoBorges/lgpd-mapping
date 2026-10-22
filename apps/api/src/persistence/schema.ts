@@ -33,6 +33,41 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   ...timestamps(),
 });
+export const externalIdentities = pgTable(
+  'external_identities',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    issuer: text('issuer').notNull(),
+    subject: text('subject').notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique('external_identities_issuer_subject').on(t.issuer, t.subject),
+    index('external_identities_user_idx').on(t.userId),
+  ],
+);
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenDigest: text('token_digest').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('sessions_token_digest').on(t.tokenDigest),
+    index('sessions_user_idx').on(t.userId),
+  ],
+);
 export const roles = pgTable('roles', {
   id: id(),
   code: text('code').notNull().unique(),

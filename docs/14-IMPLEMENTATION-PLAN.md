@@ -29,7 +29,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -632,7 +632,7 @@ Também avaliar:
 ```text
 AUTHQ-010
 SECQ-003
-SECQ-004
+SECQ-004 (DECIDED — DEC-067, DEC-068 e DEC-069)
 ```
 
 ---
@@ -656,6 +656,14 @@ user_business_units
 dependendo das decisões finais.
 
 ---
+
+## Política temporal da Session aprovada
+
+Implementação futura conforme DEC-067/068/069: `expiresAt = createdAt + 12 horas`; `lastActivityAt = createdAt`; idle timeout de 30 minutos; persistência de atividade somente por request autenticada válida, com throttling de cinco minutos e sem atualização periódica; nenhuma extensão automática de `expiresAt` ou endpoint local de refresh; logout da Session atual com revogação confirmada antes da remoção do cookie e resposta 204. A evolução exige migration e adaptação das primitives restritas, sem DML direto do runtime.
+
+## Tenant Request Context implementado
+
+A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. Roles, permissions e Business Units permanecem para a etapa posterior de autorização funcional.
 
 # 28. Authentication
 

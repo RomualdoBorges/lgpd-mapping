@@ -31,7 +31,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -46,7 +46,7 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity e Session são globais, sem organization_id artificial nem acesso runtime irrestrito. DEC-052 aprovou o bootstrap restrito: authenticatedUserId + requestedOrganizationId consulta somente a Membership própria ativa ou ausência; apenas então authorizedOrganizationId pode chegar a withTenant(), onde concessões/scopes são carregados sob RLS. Na S3.2, a fundação PostgreSQL da DEC-056 foi implementada por `auth_private.resolve_membership`: a primitive retorna somente membershipId + organizationId para o par exato User + Organization com Membership ativa. Seu owner é a role NOLOGIN `lgpd_membership_bootstrap`, separada de runtime e migrator. `memberships` conserva ENABLE/FORCE RLS; `tenant_isolation` aplica-se explicitamente ao runtime e `membership_bootstrap_select` exclusivamente à role dedicada, que possui apenas SELECT nas colunas necessárias e nenhum acesso às tabelas globais proibidas. O provisionamento administrativo cria a function sob `SET LOCAL ROLE`, com CREATE temporário e transacional em `auth_private`, revogado antes do commit; PUBLIC não possui EXECUTE e runtime recebe somente o EXECUTE específico. O repository consulta exclusivamente a primitive. Nenhuma migration 0003 foi necessária.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -338,7 +338,13 @@ Concessões ficam em RoleAssignments vinculados ao Membership. Uma concessão as
 
 Para scope BUSINESS_UNIT, associar explicitamente as áreas à respectiva concessão, preservando seu alcance. Uma lista única de áreas do Membership não pode ser combinada indiscriminadamente com todos os roles. Cada área pertence à Organization do Membership; não assumir herança hierárquica.
 
-ExternalIdentities e Sessions são relações do User. A aplicação não armazena senhas locais por esta decisão. Sessão server-side usa cookie opaco; campos e política detalhados ainda dependem de SECQ-004 e do fornecedor pendente em SECQ-001. Integridade composta e RLS foram aprovados em DEC-045 e DEC-046 (DBQ-008 e DBQ-009).
+ExternalIdentity e Session são relações globais do User, sem organization_id ou RLS tenant. A S3.1 implementa `external_identities` com unicidade global `(issuer, subject)` e `sessions` com `token_digest` único, `expires_at` e `revoked_at`.
+
+Runtime não possui acesso direto a essas tabelas nem SELECT em users. Conforme DEC-057, a persistência global é acessada exclusivamente por quatro primitives SECURITY DEFINER em `auth_private`, com owner NOLOGIN dedicado e retornos mínimos.
+
+A aplicação não armazena senhas locais nem segredo bruto da Session. DEC-058 define o digest; DEC-067 define duração absoluta padrão de 12 horas, idle timeout de 30 minutos e atividade persistida com throttling de cinco minutos; DEC-068 proíbe renovação automática e sliding expiration; DEC-069 define a revogação da Session atual no logout. Fornecedor OIDC permanece em SECQ-001. Integridade composta e RLS foram aprovados em DEC-045 e DEC-046 (DBQ-008 e DBQ-009).
+
+Impacto esperado para implementação futura: adicionar `last_activity_at TIMESTAMPTZ NOT NULL`, com backfill `last_activity_at = created_at`. `expires_at` permanece o limite absoluto. Não adicionar `absolute_expires_at`, refresh token, device ID, remember-me ou contador de renovação. Runtime continua sem DML direto em `sessions` conforme DEC-057.
 
 DEC-035 a DEC-038, DEC-040, DEC-042 e DEC-043 são a referência aprovada. Isto é modelo conceitual, não migration; Drizzle está aprovado em DEC-044.
 
@@ -2067,7 +2073,11 @@ serão especificadas em:
 
 ## Infraestrutura implementada — Slice 2
 
-Schema e migrations versionados em `apps/api/src/persistence/schema.ts` e `apps/api/drizzle/migrations/`. Entidades: Organization, BusinessUnit, User, Membership, Role e RoleAssignment; `role_assignment_business_units` é associação auxiliar por concessão. Não implementa Permissions ou features funcionais.
+Schema e migrations versionados em `apps/api/src/persistence/schema.ts` e `apps/api/drizzle/migrations/`.
+
+A migration `0002_auth_persistence.sql` é estritamente estrutural: cria `external_identities`, `sessions`, FKs, constraints e índices. Ela não cria roles, schema privado, functions ou grants runtime.
+
+O bootstrap administrativo cria `lgpd_auth_persistence`. Depois da migration, o provisionamento administrativo valida essa role e configura `auth_private`, os primitives SECURITY DEFINER, ownership e grants. Runtime utiliza somente os primitives. Entidades: Organization, BusinessUnit, User, Membership, Role e RoleAssignment; `role_assignment_business_units` é associação auxiliar por concessão. Não implementa Permissions ou features funcionais.
 
 Membership possui unicidade `(organization_id, user_id)` e indicador explícito `active`, sem propagar inativação a outros vínculos. Unicidades/FKs compostas preservam Organization em Membership → RoleAssignment → BusinessUnit. A associação de áreas exige scope BUSINESS_UNIT; ORGANIZATION não recebe lista de áreas. Concessões sem associações não implicam acesso a áreas nem herança. Role é catálogo global sem organization_id, com código globalmente único e estável (DEC-049); registra apenas código estrutural, sem permissões ou gestão/customização de catálogos. DBQ-005 continua OPEN para os demais catálogos. User permanece global, sem unicidade de e-mail ou união automática de identidades. Não foram introduzidos soft delete, hierarquia ou unicidade de nome de área; essas questões continuam pendentes.
 

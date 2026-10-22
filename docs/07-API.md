@@ -34,7 +34,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -49,7 +49,7 @@ DEC-046 (DBQ-009): RLS adicional nas tabelas tenant-bound, com contexto local à
 
 Defesa aprovada: Authentication → Membership → Permission → Scope → Repository tenant-aware → PostgreSQL constraints → PostgreSQL RLS. Nenhuma camada substitui outra. Scope de Business Unit continua na autorização da aplicação.
 
-User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. Descoberta dos próprios Memberships exige caminho restrito, sem policy irrestrita. Estes detalhes não estão implementados nem decididos por exemplos deste documento.
+User, ExternalIdentity, Session e outras entidades globais não recebem organization_id artificial; sua proteção específica será definida posteriormente. A descoberta da Membership própria ativa usa o primitive restrito aprovado em DEC-056, após Session válida, sem policy irrestrita; o desenho ainda não está implementado. Os exemplos deste documento não autorizam outros acessos globais.
 
 Referências legadas a Prisma/Drizzle ou a RLS como alternativas pendentes são históricas: estas três questões estão decididas em DEC-044 a DEC-046. Políticas funcionais, autenticação e features posteriores continuam sujeitas às questões específicas. A topologia física de produção não é escolhida por este registro.
 
@@ -220,35 +220,32 @@ A estratégia definitiva de upload ainda precisa ser definida.
 
 Endpoints protegidos exigem autenticação.
 
-A estratégia concreta ainda depende da decisão:
-
-```text
-JWT
-Session Cookie
-OIDC/SSO
-```
-
-A API não deve assumir uma estratégia específica antes da decisão arquitetural.
+A autenticação da aplicação usa Session server-side com cookie opaco (DEC-042/053/055); OIDC é o mecanismo delegado de identificação. O frontend não administra tokens de autenticação.
 
 ---
 
 # 8. Contexto autenticado
 
-Após autenticação, o backend deve obter:
+Conforme DEC-060, após validar a Session o boundary HTTP cria somente:
 
-```text
-userId
-organizationId
-roles
-permissions
-businessUnitIds
+```ts
+type AuthenticatedIdentity = Readonly<{
+  sessionId: string;
+  authenticatedUserId: string;
+}>;
 ```
 
-Essas informações devem ser confiáveis e validadas pelo backend.
+O valor fica temporariamente em `request.authenticatedIdentity`, preferencialmente exposto ao controller por decorator tipado. O controller o passa explicitamente à aplicação; application/domain não recebem `Request` ou `Response` e não usam provider request-scoped ou AsyncLocalStorage para descobrir identidade.
+
+Organization, Membership, roles, permissions e Business Units não pertencem a `AuthenticatedIdentity`. Pela DEC-062, somente após resolução positiva de `resolve_membership()` o boundary compõe, separadamente, `AuthorizedTenantContext`, contendo exclusivamente `membershipId` e `authorizedOrganizationId`. Controllers e application/use cases podem receber os dois contratos explicitamente; roles, permissions e scopes pertencem à etapa posterior de autorização.
 
 ---
 
 # 9. Organization ID
+
+Requests tenant-bound devem enviar `X-Organization-Id` (DEC-054). Esse valor é apenas requestedOrganizationId: o backend valida a Membership própria ativa conforme DEC-052 antes de estabelecer authorizedOrganizationId. Endpoints globais de autenticação/contexto anteriores ao tenant não exigem o header. Session não guarda Organization atual como autoridade.
+
+Pela DEC-065: header ausente retorna 400/`ORGANIZATION_CONTEXT_REQUIRED`; UUID inválido ou múltiplos valores retornam 400/`INVALID_ORGANIZATION_CONTEXT`; Membership inexistente, inativa, pertencente a outro User ou Organization inexistente retornam uniformemente 403/`ORGANIZATION_ACCESS_DENIED`. A causa interna da negação não é revelada e nenhum resultado negativo produz `AuthorizedTenantContext`.
 
 Não confiar em:
 
@@ -473,21 +470,13 @@ Formato padrão:
 {
   "error": {
     "code": "LEGAL_BASIS_REQUIRED",
-    "message": "Legal basis is required.",
+    "message": "Base legal obrigatória.",
     "details": []
   }
 }
 ```
 
-O campo:
-
-```text
-code
-```
-
-deve ser estável.
-
-O frontend deve preferir `code` para tratamento programático.
+O campo `code` deve ser estável, em inglês e `UPPER_SNAKE_CASE`. Mensagens públicas são escritas em português conforme DEC-064. O frontend depende de `code` para tratamento programático e não compara `message`. Detalhes técnicos e internos não são expostos.
 
 ---
 
@@ -499,7 +488,7 @@ Exemplo:
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Validation failed.",
+    "message": "Falha de validação.",
     "details": [
       {
         "field": "retention.duration",
@@ -517,6 +506,8 @@ Exemplo:
 ---
 
 # 21. Status HTTP
+
+Conforme DEC-063, usar 400 para falhas estruturais/transporte e 422 para violações de domínio, negócio ou workflow. 401, 403, 404, 409 e 500 permanecem vinculados aos seus contratos específicos.
 
 Utilizar semanticamente:
 
@@ -547,6 +538,19 @@ Utilizar:
 
 quando o usuário não estiver autenticado.
 
+Conforme DEC-061, em endpoint protegido, cookie ausente ou inválido e Session inexistente, expirada ou revogada retornam a mesma resposta pública:
+
+```json
+{
+  "error": {
+    "code": "AUTHENTICATION_REQUIRED",
+    "message": "Autenticação necessária."
+  }
+}
+```
+
+A causa pode ser distinguida somente internamente, sem registrar cookie, segredo, digest ou header `Cookie`. Cookie ausente não gera remoção; cookie presente que não autentica é expirado com o perfil da DEC-059, sem revogar Session server-side. Em endpoint público, ausência ou invalidade do cookie não causa 401 por si só nem remoção automática.
+
 Utilizar:
 
 ```text
@@ -562,6 +566,16 @@ Entretanto, recursos pertencentes a outro tenant podem retornar:
 ```
 
 para evitar exposição da existência do recurso.
+
+Pela DEC-066, depois de criado `AuthorizedTenantContext`, recurso inexistente, cross-tenant ou fora do scope de visibilidade retorna o mesmo contrato 404 no mesmo endpoint. Usar o código `*_NOT_FOUND` específico já aprovado para endpoints tipados ou `RESOURCE_NOT_FOUND` como fallback genérico. Quando o recurso for legitimamente visível, mas a ação não for autorizada, retornar 403/`FORBIDDEN` com a mensagem pública `Ação não autorizada.`. `ORGANIZATION_ACCESS_DENIED` permanece exclusivo do bootstrap tenant.
+
+---
+
+### Lifecycle da Session
+
+Pelas DEC-067/068, `expiresAt` é fixado em `createdAt + 12 horas`, sem extensão ou sliding expiration. A Session também expira após 30 minutos sem atividade autenticada válida. `lastActivityAt` somente avança por request autenticada válida e sua persistência é throttled em cinco minutos; ausência de requests nunca gera escrita periódica. Expiração absoluta e por inatividade retornam o mesmo 401/`AUTHENTICATION_REQUIRED` da DEC-061. Não existe endpoint de refresh da Session local.
+
+Pela DEC-069, o logout da Session atual revoga server-side, confirma a revogação, remove o cookie conforme DEC-059 e responde `204 No Content`. Request autenticada depois do commit recebe 401; request que já concluiu autenticação pode terminar.
 
 ---
 
@@ -581,7 +595,7 @@ Resposta:
 {
   "error": {
     "code": "RESOURCE_VERSION_CONFLICT",
-    "message": "The resource was modified by another user."
+    "message": "O recurso foi alterado por outro usuário."
   }
 }
 ```
@@ -590,7 +604,7 @@ Resposta:
 
 # 24. 422
 
-Pode ser utilizado para violações de regras de negócio.
+Utilizar para violações de domínio, negócio ou workflow em requests estruturalmente válidas.
 
 Exemplo:
 
@@ -604,7 +618,7 @@ Resposta:
 {
   "error": {
     "code": "ACTIVITY_NOT_COMPLIANT",
-    "message": "The activity cannot be activated."
+    "message": "A atividade não pode ser ativada."
   }
 }
 ```
@@ -1956,7 +1970,7 @@ Preferir:
 {
   "error": {
     "code": "INTERNAL_ERROR",
-    "message": "An unexpected error occurred."
+    "message": "Ocorreu um erro inesperado."
   }
 }
 ```
@@ -2104,6 +2118,8 @@ UNAUTHENTICATED
 FORBIDDEN
 RESOURCE_NOT_FOUND
 
+ORGANIZATION_CONTEXT_REQUIRED
+INVALID_ORGANIZATION_CONTEXT
 ORGANIZATION_ACCESS_DENIED
 BUSINESS_UNIT_ACCESS_DENIED
 

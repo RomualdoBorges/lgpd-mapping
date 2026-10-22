@@ -58,7 +58,7 @@ Resposta de erro:
 {
   "error": {
     "code": "PROCESSING_ACTIVITY_NOT_FOUND",
-    "message": "Processing activity not found",
+    "message": "Atividade de tratamento não encontrada.",
     "requestId": "req_123"
   }
 }
@@ -74,7 +74,7 @@ Quando necessário:
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
+    "message": "Falha na validação da requisição",
     "requestId": "req_123",
     "details": [
       {
@@ -121,9 +121,13 @@ UPPER_SNAKE_CASE
 
 # 7. `message`
 
-Pode ser alterada sem quebrar consumidores.
+Conforme DEC-064, mensagens públicas da API são escritas em português. Podem ser alteradas sem quebrar consumidores; frontend e integrações dependem de `error.code`, nunca da mensagem. Detalhes técnicos e internos não são expostos.
 
-Não utilizar mensagem como identificador.
+---
+
+# 8. Status de validação
+
+Conforme DEC-063, falhas estruturais ou de transporte usam 400; violações de domínio, negócio ou workflow em requests estruturalmente válidas usam 422. Autenticação, autorização, inexistência, conflito e erro interno conservam seus contratos específicos.
 
 ---
 
@@ -206,7 +210,7 @@ Structurally valid request that cannot be processed due to domain/workflow valid
 Rate limit
 
 500
-Unexpected internal error
+Erro interno inesperado
 
 503
 Essential service temporarily unavailable
@@ -216,9 +220,7 @@ Essential service temporarily unavailable
 
 # 12. Regra sobre 400 e 422
 
-Usar consistentemente.
-
-Sugestão:
+Conforme DEC-063, usar consistentemente:
 
 ```text
 400
@@ -228,7 +230,7 @@ transport/request format validation
 domain/business validation
 ```
 
-A convenção final deve ser aplicada igualmente em toda API.
+A convenção deve ser aplicada igualmente em toda API. Autenticação, autorização, inexistência, conflito e falha interna conservam seus contratos próprios.
 
 ---
 
@@ -246,7 +248,7 @@ usuário autenticado não possui autorização
 
 # 14. 404 e Tenant Isolation
 
-Para recursos tenant-bound fora do tenant atual, preferir comportamento que não revele existência.
+Pela DEC-066, após existir `AuthorizedTenantContext`, recurso inexistente, recurso fora do tenant atual e recurso fora do scope de visibilidade devem usar o mesmo contrato 404 dentro do endpoint.
 
 Exemplo:
 
@@ -262,7 +264,7 @@ em vez de revelar:
 403 Activity belongs to another organization
 ```
 
-quando isso expuser informação indevida.
+Conhecer o UUID não concede visibilidade. Não executar lookup global apenas para distinguir publicamente essas condições.
 
 ---
 
@@ -360,7 +362,7 @@ Resposta:
 {
   "error": {
     "code": "INTERNAL_ERROR",
-    "message": "Unexpected internal error",
+    "message": "Erro interno inesperado",
     "requestId": "req_123"
   }
 }
@@ -381,6 +383,17 @@ Uso:
 ```text
 dependência essencial indisponível
 ```
+
+---
+
+## `RESOURCE_NOT_FOUND`
+
+```text
+HTTP: 404
+Message: Recurso não encontrado.
+```
+
+Fallback genérico quando não houver código `*_NOT_FOUND` específico já aprovado para o tipo de recurso. Pela DEC-066, no mesmo endpoint representa de forma indistinguível recurso inexistente, cross-tenant ou fora do scope de visibilidade.
 
 ---
 
@@ -446,7 +459,7 @@ INVALID_DATE
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
+    "message": "Falha na validação da requisição",
     "details": [
       {
         "field": "businessUnitId",
@@ -543,9 +556,10 @@ Evitar expor informação no login quando isso facilitar enumeração de usuári
 
 ```text
 HTTP: 403
+Message: Ação não autorizada.
 ```
 
-Uso genérico:
+Uso genérico quando o recurso é legitimamente visível, mas a ação solicitada não é autorizada:
 
 ```text
 usuário autenticado sem permission/scope necessário
@@ -575,7 +589,7 @@ Uso:
 permission existe mas recurso está fora do scope permitido
 ```
 
-Não utilizar quando isso revelar existência cross-tenant.
+Somente pode ser utilizado quando a existência do recurso for legitimamente revelável. Quando o scope impedir confirmar a existência, usar o mesmo contrato 404 aplicável a recurso inexistente e cross-tenant, conforme DEC-066.
 
 ---
 
@@ -584,10 +598,10 @@ Não utilizar quando isso revelar existência cross-tenant.
 ## `ORGANIZATION_CONTEXT_REQUIRED`
 
 ```text
-HTTP: 400 ou 401
+HTTP: 400
 ```
 
-Definição final depende da estratégia de multi-organização.
+Definido pela DEC-065 para ausência de `X-Organization-Id` em endpoint tenant-bound.
 
 Uso:
 
@@ -634,6 +648,8 @@ Cuidado para não revelar dados do outro tenant na resposta.
 ```text
 HTTP: 404
 ```
+
+Não utilizar no bootstrap tenant: Organization inexistente nesse fluxo usa uniformemente 403/`ORGANIZATION_ACCESS_DENIED` conforme DEC-065. Outros usos exigem endpoint no qual a existência possa ser legitimamente revelada.
 
 ---
 
@@ -697,6 +713,8 @@ Uso:
 BU pertence ao tenant, mas está fora do scope autorizado
 ```
 
+Somente pode ser exposto quando a existência da Business Unit for legitimamente revelável. Caso contrário, usar o contrato 404 já aprovado para o tipo ou `RESOURCE_NOT_FOUND` como fallback genérico, sem decidir nesta regra a autorização específica de Business Units.
+
 ---
 
 ## `BUSINESS_UNIT_NAME_CONFLICT`
@@ -717,26 +735,41 @@ definir uniqueness correspondente.
 
 # 25. User / Membership Errors
 
+## Bootstrap tenant — DEC-065
+
+### `ORGANIZATION_CONTEXT_REQUIRED`
+
+```text
+HTTP: 400
+Message: A organização da requisição é obrigatória.
+```
+
+Usar somente quando `X-Organization-Id` estiver ausente em endpoint tenant-bound.
+
+### `INVALID_ORGANIZATION_CONTEXT`
+
+```text
+HTTP: 400
+Message: Contexto de organização inválido.
+```
+
+Usar para UUID inválido ou múltiplos valores de `X-Organization-Id`.
+
+### `ORGANIZATION_ACCESS_DENIED`
+
+```text
+HTTP: 403
+Message: Acesso à organização não autorizado.
+```
+
+Usar uniformemente no bootstrap para Membership inexistente, inativa, pertencente a outro User ou Organization inexistente. Não expor qual condição ocorreu. `MEMBERSHIP_NOT_FOUND` e `MEMBERSHIP_INACTIVE` não representam falhas desse bootstrap e não permanecem no catálogo sem caso administrativo aprovado.
+
+---
+
 ## `USER_NOT_FOUND`
 
 ```text
 HTTP: 404
-```
-
----
-
-## `MEMBERSHIP_NOT_FOUND`
-
-```text
-HTTP: 404
-```
-
----
-
-## `MEMBERSHIP_INACTIVE`
-
-```text
-HTTP: 403
 ```
 
 ---
@@ -924,7 +957,7 @@ Exemplo:
 {
   "error": {
     "code": "ACTIVITY_SUBMIT_REQUIREMENTS_NOT_MET",
-    "message": "Processing activity cannot be submitted",
+    "message": "A atividade de tratamento não pode ser submetida",
     "details": {
       "issues": [
         {
@@ -1849,13 +1882,15 @@ HTTP: 404
 HTTP: 403
 ```
 
-Quando não revelar existência indevida.
+Somente quando o arquivo for legitimamente visível e apenas a ação estiver negada.
 
 Cross-tenant pode utilizar:
 
 ```text
 FILE_NOT_FOUND
 ```
+
+Arquivo fora do scope de visibilidade também deve ser indistinguível de arquivo inexistente/cross-tenant. Esta regra não define a política específica de autorização de arquivos.
 
 ---
 
@@ -2418,7 +2453,7 @@ Errado:
 {
   "error": {
     "code": "INVALID_REFERENCE",
-    "message": "Referenced resource is not available"
+    "message": "O recurso referenciado não está disponível"
   }
 }
 ```
@@ -2449,15 +2484,17 @@ sem revelar motivo sensível.
 
 # 78. Not Found Consistency
 
+Pela DEC-066, códigos `*_NOT_FOUND` específicos já aprovados devem ser reutilizados em endpoints tipados. `RESOURCE_NOT_FOUND` é o fallback genérico quando não houver contrato específico; não criar novos códigos específicos arbitrariamente.
+
 Repositories tenant-aware devem facilitar:
 
 ```text
-resource outside tenant
+recurso inexistente, outside tenant ou fora do scope de visibilidade
 ↓
-not found
+mesmo status, error.code, message e formato 404 no endpoint
 ```
 
-sem lookup global seguido de mensagem reveladora.
+Sem lookup global seguido de mensagem reveladora. Não expor Organization, Business Unit, owner, existência, estado interno ou causa da negação.
 
 ---
 

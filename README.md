@@ -57,6 +57,32 @@ Somente `lgpd_migrator` recebe CREATE no database LGPD correspondente para o boo
 
 O init roda somente em um volume vazio. Para o volume LGPD já existente, o grant CREATE aprovado foi aplicado exclusivamente a `lgpd_migrator` no database configurado, sem alterar runtime. Alterar credenciais no `.env` não altera roles já existentes. `pnpm db:down` para o container sem apagar o volume. Não remover volumes que contenham dados a preservar.
 
+### Provisionamento da persistência global de autenticação
+
+A S3.1 separa três responsabilidades:
+
+```text
+administrative provisioning != migration != runtime
+```
+
+Em volume novo, `infra/postgres/init.sh` cria a role NOLOGIN `lgpd_auth_persistence`. A migration `0002_auth_persistence.sql` cria somente tabelas, FKs, constraints e índices.
+
+Depois da migration, o script versionado `infra/postgres/provision-auth-persistence.sql` deve ser executado com `lgpd_admin` no database LGPD. Ele recebe os nomes validados das roles runtime e migration por settings da sessão, valida a role dedicada, confirma que runtime e migrator não são membros dela e configura `auth_private`, functions, ownership e grants.
+
+O script falha se a role estiver ausente ou com propriedades divergentes. Ele não cria ou altera roles.
+
+Runtime não recebe DML direto em `external_identities`, `sessions` ou `users`. Recebe somente USAGE em `auth_private` e EXECUTE individual nos quatro primitives da DEC-057.
+
+Os testes de integração reproduzem essa ordem usando exclusivamente um database PostgreSQL de teste do projeto LGPD.
+
+### Bootstrap restrito de Membership
+
+A S3.2 implementa a fundação PostgreSQL das DEC-052 e DEC-056 sem criar migration estrutural adicional. Em volume novo, `infra/postgres/init.sh` cria a role NOLOGIN `lgpd_membership_bootstrap`. Depois das migrations e do provisionamento da S3.1, `infra/postgres/provision-membership-bootstrap.sql` é executado administrativamente: valida as roles e o estado de RLS, restringe `tenant_isolation` ao runtime, cria `membership_bootstrap_select` exclusivamente para a role dedicada e configura `auth_private.resolve_membership(authenticated_user_id, requested_organization_id)`.
+
+A primitive retorna somente `membershipId` e `organizationId` para a Membership ativa do par exato User + Organization, ou ausência. `memberships` permanece com ENABLE/FORCE RLS. A role dedicada recebe apenas SELECT nas colunas necessárias de `memberships`, não acessa `users`, `organizations`, `external_identities` ou `sessions` e não é concedida ao runtime ou migrator. A function é criada sob `SET LOCAL ROLE`, com CREATE temporário e transacional em `auth_private`; ao final, PUBLIC não possui EXECUTE, runtime possui somente o EXECUTE específico e a role dedicada não conserva CREATE no schema.
+
+O repository chama exclusivamente essa primitive. Os 28 cenários da DEC-056 passaram em PostgreSQL real, com as regressões de DEC-045/046 e DEC-057 preservadas. O estado validado possui 10 testes unitários e 52 testes de integração. Esta etapa ainda não implementa autenticação HTTP, resolução de Session no request, extração do User autenticado, `X-Organization-Id` no pipeline HTTP, AuthenticatedContext completo, autorização por RoleAssignment/BusinessUnit, OIDC ou frontend de autenticação.
+
 ### Verificações
 
 ```sh
@@ -103,7 +129,7 @@ TESTQ-001 permanece OPEN: nenhuma ferramenta de provisionamento para CI, Testcon
 
 ### Regressões auditadas do Slice 2
 
-UPDATE/DELETE combinam controles positivos em BusinessUnits específicas de A com as assertions negativas sobre B, usando runtime restrito. O bootstrap vazio executa dois processos Node independentes no entry point real. Gates SQL apenas no banco exclusivo permitem observar ambos esperando o advisory lock; depois, um executor possui o lock e espera no bootstrap do journal, enquanto o outro continua esperando o advisory lock. A liberação do gate permite sucesso de ambos e exatamente os dois registros esperados no journal. Não há hooks de produção nem sleeps usados como prova de disputa; polling limitado consulta pg_stat_activity/pg_locks.
+UPDATE/DELETE combinam controles positivos em BusinessUnits específicas de A com as assertions negativas sobre B, usando runtime restrito. O bootstrap vazio executa dois processos Node independentes no entry point real. Gates SQL apenas no banco exclusivo permitem observar ambos esperando o advisory lock; depois, um executor possui o lock e espera no bootstrap do journal, enquanto o outro continua esperando o advisory lock. A liberação do gate permite sucesso de ambos e exatamente os três registros esperados no journal. Não há hooks de produção nem sleeps usados como prova de disputa; polling limitado consulta pg_stat_activity/pg_locks.
 
 O caminho de erro usa sessão de migration read-only, sem alterar migrations: o bootstrap oficial falha após o lock, a sessão é encerrada e outro migrator adquire o lock/aplica normalmente.
 

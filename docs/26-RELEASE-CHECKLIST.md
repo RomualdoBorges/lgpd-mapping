@@ -29,7 +29,7 @@ Autorização no backend: identidade autenticada + Membership ativo no tenant so
 
 A matriz trata apenas leitura. Escrita, Submit, aprovação, Gate e publicação continuam dependendo das questões respectivas. Dashboard, Systems e Suppliers permanecem fora da primeira entrega, sem exclusão implícita da V1.
 
-OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. Política detalhada de sessão continua em SECQ-004.
+OIDC com provedor gerenciado, fornecedor pendente (Auth0 somente candidato), User interno independente e sem união automática de identidades por e-mail. SSO corporativo será parte da V1 após a primeira entrega. Sessão server-side com cookie opaco; frontend não administra tokens. A sessão identifica User; cada request solicita Organization explicitamente e o backend valida autorização atual. Campos do body não transferem recursos entre tenants. A política temporal da Session está definida nas DEC-067/068 e o logout da Session atual na DEC-069.
 
 Seções de proposta legadas deste documento devem ser interpretadas sob estas decisões: não constituem aprovação de permissões de escrita, scopes adicionais, fornecedor, topologia do banco ou herança hierárquica. RLS foi aprovado posteriormente em DEC-046. Questões decididas continuam referenciadas para rastreabilidade; pendências parciais estão identificadas no registro central.
 
@@ -689,14 +689,22 @@ Verificar:
 
 # 35. Session Security
 
-Conforme decisões:
+Conforme DEC-067/068/069, verificar:
 
 ```text
-SECQ-001
-SECQ-002
-SECQ-003
-SECQ-004
+[ ] expiresAt fixo em createdAt + 12 horas
+[ ] idle timeout de 30 minutos
+[ ] lastActivityAt inicializado com createdAt
+[ ] atividade somente por request autenticada válida
+[ ] throttling de persistência de cinco minutos
+[ ] nenhuma escrita periódica sem requests
+[ ] sem sliding expiration ou refresh local
+[ ] logout revoga antes de remover o cookie
+[ ] logout responde 204
+[ ] expiração absoluta e idle usam o mesmo 401 da DEC-061
 ```
+
+Fornecedor OIDC e MFA permanecem em SECQ-001 e SECQ-003.
 
 ---
 
@@ -2716,7 +2724,7 @@ Priority: MEDIUM
 SECQ-001
 SECQ-002
 SECQ-003
-SECQ-004
+SECQ-004 (DECIDED — DEC-067, DEC-068 e DEC-069)
 SECQ-005
 DBQ-009
 

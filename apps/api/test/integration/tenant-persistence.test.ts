@@ -9,6 +9,13 @@ import { databaseConfiguration } from '../../src/config/environment.js';
 import { withTenant } from '../../src/persistence/tenant-transaction.js';
 import { applyMigrations } from '../../src/persistence/migrate.js';
 import {
+  createSession,
+  findExternalIdentityByIssuerAndSubject,
+  findSessionByTokenDigest,
+  revokeSession,
+} from '../../src/persistence/auth-repositories.js';
+import { resolveMembership } from '../../src/persistence/membership-bootstrap-repository.js';
+import {
   createTestDatabase,
   A,
   B,
@@ -54,7 +61,7 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     );
     expect(fixture.concurrency.waitingExecutors).toBe(2);
     expect(fixture.concurrency.protectedExecutors).toBe(1);
-    expect(fixture.concurrency.journalEntries).toBe(2);
+    expect(fixture.concurrency.journalEntries).toBe(3);
   });
   it('falha após adquirir lock encerra sessão e permite outro migrator', async () => {
     const applicationName = `lgpd_failed_migration_${randomUUID()}`;
@@ -345,7 +352,14 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
       "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE'",
     );
     expect(tables.rows.map((row) => row.table_name).sort()).toEqual(
-      [...tenantTables, 'users', 'roles', '__drizzle_migrations'].sort(),
+      [
+        ...tenantTables,
+        'users',
+        'roles',
+        'external_identities',
+        'sessions',
+        '__drizzle_migrations',
+      ].sort(),
     );
     expect(
       (
@@ -353,7 +367,7 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
           'select * from public.__drizzle_migrations',
         )
       ).rows,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
   it('User global possui dois Memberships independentes e não recebe organization_id/RLS', async () => {
     const user = await fixture.migration.query(
@@ -496,8 +510,8 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     );
     try {
       const service = app.get(DatabaseService);
-      const result = await service.withTenant(
-        A,
+      const result = await service.withAuthorizedTenant(
+        { membershipId: M_A, authorizedOrganizationId: A },
         async (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) =>
           tx.execute(sql`select id from business_units`),
       );
@@ -515,8 +529,8 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     }>(
       'select id,hash,created_at from public.__drizzle_migrations order by created_at',
     );
-    expect(entries.rows).toHaveLength(2);
-    expect(new Set(entries.rows.map((row) => row.created_at)).size).toBe(2);
+    expect(entries.rows).toHaveLength(3);
+    expect(new Set(entries.rows.map((row) => row.created_at)).size).toBe(3);
     for (const row of entries.rows) expect(row.hash).toMatch(/^[0-9a-f]{64}$/);
     const table = await fixture.migration.query(
       "select to_regclass('public.__drizzle_migrations') as journal, to_regclass('drizzle.__drizzle_migrations') as other_journal",
@@ -578,5 +592,674 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     } finally {
       client.release(true);
     }
+  });
+});
+
+describe('S3.1: persistência global de autenticação restrita', () => {
+  it('cria estruturas globais com FKs, campos mínimos e sem contexto tenant', async () => {
+    const columns = await fixture.migration.query<{
+      table_name: string;
+      column_name: string;
+    }>(
+      "select table_name,column_name from information_schema.columns where table_schema='public' and table_name=any($1) order by table_name,column_name",
+      [['external_identities', 'sessions']],
+    );
+    const byTable = (table: string) =>
+      columns.rows
+        .filter((row) => row.table_name === table)
+        .map((row) => row.column_name);
+    expect(byTable('external_identities')).toEqual([
+      'created_at',
+      'id',
+      'issuer',
+      'subject',
+      'updated_at',
+      'user_id',
+    ]);
+    expect(byTable('sessions')).toEqual([
+      'created_at',
+      'expires_at',
+      'id',
+      'revoked_at',
+      'token_digest',
+      'user_id',
+    ]);
+    for (const forbidden of [
+      'organization_id',
+      'membership_id',
+      'role_id',
+      'scope',
+      'permissions',
+      'token',
+      'email',
+    ]) {
+      expect(byTable('external_identities')).not.toContain(forbidden);
+      expect(byTable('sessions')).not.toContain(forbidden);
+    }
+    const rls = await fixture.migration.query(
+      "select relname,relrowsecurity from pg_class where oid=any(array['public.external_identities'::regclass,'public.sessions'::regclass]) order by relname",
+    );
+    expect(rls.rows).toEqual([
+      { relname: 'external_identities', relrowsecurity: false },
+      { relname: 'sessions', relrowsecurity: false },
+    ]);
+    const missingUser = randomUUID();
+    await expect(
+      fixture.migration.query(
+        "insert into external_identities(user_id,issuer,subject) values($1,'https://issuer.invalid','missing')",
+        [missingUser],
+      ),
+    ).rejects.toMatchObject({ code: '23503' });
+  });
+
+  it('preserva identidade por issuer+subject e resolve somente userId', async () => {
+    const otherUser = randomUUID();
+    await fixture.migration.query(
+      "insert into users(id,name,email) values($1,'Outra pessoa fictícia','outra@example.invalid')",
+      [otherUser],
+    );
+    await fixture.migration.query(
+      `insert into external_identities(user_id,issuer,subject) values
+       ($1,'https://issuer-a.invalid','subject-1'),
+       ($1,'https://issuer-a.invalid','subject-2'),
+       ($2,'https://issuer-b.invalid','subject-1')`,
+      [U, otherUser],
+    );
+    expect(
+      await findExternalIdentityByIssuerAndSubject(
+        fixture.database,
+        'https://issuer-a.invalid',
+        'subject-1',
+      ),
+    ).toEqual({ userId: U });
+    expect(
+      await findExternalIdentityByIssuerAndSubject(
+        fixture.database,
+        'https://issuer.invalid',
+        'absent',
+      ),
+    ).toBeNull();
+    await expect(
+      fixture.migration.query(
+        "insert into external_identities(user_id,issuer,subject) values($1,'https://issuer-a.invalid','subject-1')",
+        [otherUser],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    expect(
+      (
+        await fixture.migration.query(
+          'select user_id,issuer,subject from external_identities order by issuer,subject',
+        )
+      ).rows,
+    ).toHaveLength(3);
+  });
+
+  it('cria, resolve e revoga Sessions sem expor digest', async () => {
+    const expiresAt = new Date('2030-01-01T00:00:00.000Z');
+    const first = await createSession(fixture.database, {
+      userId: U,
+      tokenDigest: 'digest-s3-1-first',
+      expiresAt,
+    });
+    const second = await createSession(fixture.database, {
+      userId: U,
+      tokenDigest: 'digest-s3-1-second',
+      expiresAt,
+    });
+    expect(first.sessionId).not.toBe(second.sessionId);
+    expect(first).toMatchObject({ expiresAt, revokedAt: null });
+    expect(Object.keys(first).sort()).toEqual(
+      ['createdAt', 'expiresAt', 'revokedAt', 'sessionId'].sort(),
+    );
+    const resolved = await findSessionByTokenDigest(
+      fixture.database,
+      'digest-s3-1-first',
+    );
+    expect(resolved).toEqual({
+      sessionId: first.sessionId,
+      userId: U,
+      expiresAt,
+      revokedAt: null,
+    });
+    expect(Object.keys(resolved ?? {})).not.toContain('tokenDigest');
+    const persisted = await fixture.migration.query(
+      'select token_digest,revoked_at from sessions where id=$1',
+      [first.sessionId],
+    );
+    expect(persisted.rows[0]).toEqual({
+      token_digest: 'digest-s3-1-first',
+      revoked_at: null,
+    });
+    const firstRevocation = new Date('2029-01-01T00:00:00.000Z');
+    const laterRevocation = new Date('2029-02-01T00:00:00.000Z');
+    expect(
+      await revokeSession(fixture.database, first.sessionId, firstRevocation),
+    ).toBe(true);
+    expect(
+      await revokeSession(fixture.database, first.sessionId, laterRevocation),
+    ).toBe(true);
+    expect(
+      (
+        await fixture.migration.query(
+          'select revoked_at from sessions where id=$1',
+          [first.sessionId],
+        )
+      ).rows[0]?.revoked_at,
+    ).toEqual(firstRevocation);
+    expect(
+      await revokeSession(fixture.database, randomUUID(), laterRevocation),
+    ).toBe(false);
+    expect(
+      (
+        await fixture.migration.query('select id from sessions where id=$1', [
+          first.sessionId,
+        ])
+      ).rows,
+    ).toHaveLength(1);
+    await expect(
+      createSession(fixture.database, {
+        userId: U,
+        tokenDigest: 'digest-s3-1-first',
+        expiresAt,
+      }),
+    ).rejects.toMatchObject(pgError('23505'));
+    await expect(
+      createSession(fixture.database, {
+        userId: randomUUID(),
+        tokenDigest: 'digest-missing-user',
+        expiresAt,
+      }),
+    ).rejects.toMatchObject(pgError('23503'));
+  });
+
+  it('mantém runtime sem DML direto e expõe somente os quatro primitives', async () => {
+    for (const table of ['external_identities', 'sessions']) {
+      for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        const result = await fixture.runtime.query<{ allowed: boolean }>(
+          'select has_table_privilege(current_user,$1,$2) as allowed',
+          [`public.${table}`, privilege],
+        );
+        expect(result.rows[0]?.allowed).toBe(false);
+      }
+    }
+    expect(
+      (
+        await fixture.runtime.query(
+          "select has_table_privilege(current_user,'public.users','SELECT') as allowed",
+        )
+      ).rows[0]?.allowed,
+    ).toBe(false);
+    await expect(
+      fixture.runtime.query('select * from external_identities'),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      fixture.runtime.query('select * from sessions'),
+    ).rejects.toMatchObject({ code: '42501' });
+    const functions = await fixture.migration.query<{
+      name: string;
+      owner: string;
+      security_definer: boolean;
+      config: string[];
+      public_execute: boolean;
+      runtime_execute: boolean;
+    }>(
+      `select p.proname as name,pg_get_userbyid(p.proowner) as owner,
+        p.prosecdef as security_definer,p.proconfig as config,
+        has_function_privilege('public',p.oid,'EXECUTE') as public_execute,
+        has_function_privilege($1,p.oid,'EXECUTE') as runtime_execute
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname=any($2) order by p.proname`,
+      [
+        fixture.runtimeRole,
+        [
+          'create_session',
+          'resolve_external_identity',
+          'resolve_session',
+          'revoke_session',
+        ],
+      ],
+    );
+    expect(functions.rows.map((row) => row.name)).toEqual([
+      'create_session',
+      'resolve_external_identity',
+      'resolve_session',
+      'revoke_session',
+    ]);
+    for (const fn of functions.rows) {
+      expect(fn.owner).toBe('lgpd_auth_persistence');
+      expect(fn.security_definer).toBe(true);
+      expect(fn.public_execute).toBe(false);
+      expect(fn.runtime_execute).toBe(true);
+      expect(fn.config).toContain('search_path=pg_catalog, pg_temp');
+    }
+  });
+
+  it('mantém role e schema privados sem memberships ou privilégios excedentes', async () => {
+    const role = await fixture.migration.query(
+      "select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname='lgpd_auth_persistence'",
+    );
+    expect(role.rows[0]).toEqual({
+      rolcanlogin: false,
+      rolsuper: false,
+      rolbypassrls: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolinherit: false,
+    });
+    for (const roleName of [fixture.runtimeRole, fixture.migrationRole]) {
+      expect(
+        (
+          await fixture.migration.query(
+            "select pg_has_role($1,'lgpd_auth_persistence','MEMBER') as member",
+            [roleName],
+          )
+        ).rows[0]?.member,
+      ).toBe(false);
+    }
+    const schema = await fixture.migration.query(
+      `select pg_get_userbyid(nspowner) as owner,
+        has_schema_privilege('public','auth_private','USAGE') as public_usage,
+        has_schema_privilege('public','auth_private','CREATE') as public_create,
+        has_schema_privilege($1,'auth_private','USAGE') as runtime_usage,
+        has_schema_privilege($1,'auth_private','CREATE') as runtime_create
+       from pg_namespace where nspname='auth_private'`,
+      [fixture.runtimeRole],
+    );
+    expect(schema.rows[0]).toEqual({
+      owner: 'lgpd_auth_persistence',
+      public_usage: false,
+      public_create: false,
+      runtime_usage: true,
+      runtime_create: false,
+    });
+    const privileges = await fixture.migration.query(
+      `select
+        has_table_privilege('lgpd_auth_persistence','public.external_identities','SELECT') as identity_select,
+        has_table_privilege('lgpd_auth_persistence','public.external_identities','INSERT,UPDATE,DELETE') as identity_write,
+        has_table_privilege('lgpd_auth_persistence','public.sessions','SELECT,INSERT,UPDATE') as session_required,
+        has_table_privilege('lgpd_auth_persistence','public.sessions','DELETE') as session_delete,
+        has_table_privilege('lgpd_auth_persistence','public.users','SELECT') as user_select`,
+    );
+    expect(privileges.rows[0]).toEqual({
+      identity_select: true,
+      identity_write: false,
+      session_required: true,
+      session_delete: false,
+      user_select: false,
+    });
+    await fixture.runtime.query('set search_path = public, pg_temp');
+    expect(
+      await findExternalIdentityByIssuerAndSubject(
+        fixture.database,
+        'shadow.invalid',
+        'absent',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('S3.2: bootstrap PostgreSQL restrito de Membership — DEC-056', () => {
+  it('S3.2-01 — role dedicada possui exatamente os atributos restritos', async () => {
+    const role = await fixture.migration.query(
+      "select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname='lgpd_membership_bootstrap'",
+    );
+    expect(role.rows[0]).toEqual({
+      rolcanlogin: false,
+      rolsuper: false,
+      rolbypassrls: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolinherit: false,
+    });
+  });
+
+  it('S3.2-02 — runtime e migrator permanecem roles LOGIN restritas', async () => {
+    for (const roleName of [fixture.runtimeRole, fixture.migrationRole]) {
+      const role = await fixture.migration.query(
+        'select rolcanlogin,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit from pg_roles where rolname=$1',
+        [roleName],
+      );
+      expect(role.rows[0]).toEqual({
+        rolcanlogin: true,
+        rolsuper: false,
+        rolbypassrls: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolinherit: false,
+      });
+    }
+  });
+
+  it('S3.2-03 — runtime e migrator não são membros da role dedicada', async () => {
+    for (const roleName of [fixture.runtimeRole, fixture.migrationRole]) {
+      const result = await fixture.migration.query(
+        "select pg_has_role($1,'lgpd_membership_bootstrap','MEMBER') as member",
+        [roleName],
+      );
+      expect(result.rows[0]?.member).toBe(false);
+    }
+  });
+
+  it('S3.2-04 — executor administrativo pode SET ROLE sem membership persistente', async () => {
+    const result = await fixture.migration.query(
+      `select pg_has_role('lgpd_admin','lgpd_membership_bootstrap','SET') as can_set,
+        exists(
+          select 1 from pg_auth_members am
+          join pg_roles granted on granted.oid=am.roleid
+          join pg_roles member on member.oid=am.member
+          where granted.rolname='lgpd_membership_bootstrap'
+            and member.rolname='lgpd_admin'
+        ) as member`,
+    );
+    expect(result.rows[0]).toEqual({ can_set: true, member: false });
+  });
+
+  it('S3.2-05 — memberships preserva ENABLE e FORCE RLS', async () => {
+    const result = await fixture.migration.query(
+      "select relrowsecurity,relforcerowsecurity from pg_class where oid='public.memberships'::regclass",
+    );
+    expect(result.rows[0]).toEqual({
+      relrowsecurity: true,
+      relforcerowsecurity: true,
+    });
+  });
+
+  it('S3.2-06 — role dedicada não é owner de memberships', async () => {
+    const result = await fixture.migration.query(
+      "select pg_get_userbyid(relowner) as owner from pg_class where oid='public.memberships'::regclass",
+    );
+    expect(result.rows[0]?.owner).not.toBe('lgpd_membership_bootstrap');
+  });
+
+  it('S3.2-07 — tenant_isolation aplica-se explicitamente somente ao runtime', async () => {
+    const result = await fixture.migration.query<{ roles: string }>(
+      "select roles::text as roles from pg_policies where schemaname='public' and tablename='memberships' and policyname='tenant_isolation'",
+    );
+    expect(result.rows[0]?.roles).toBe(`{${fixture.runtimeRole}}`);
+  });
+
+  it('S3.2-08 — policy bootstrap é permissiva, somente SELECT e exclusiva da role dedicada', async () => {
+    const result = await fixture.migration.query<{
+      permissive: string;
+      cmd: string;
+      roles: string;
+    }>(
+      "select permissive,cmd,roles::text as roles from pg_policies where schemaname='public' and tablename='memberships' and policyname='membership_bootstrap_select'",
+    );
+    expect(result.rows[0]).toEqual({
+      permissive: 'PERMISSIVE',
+      cmd: 'SELECT',
+      roles: '{lgpd_membership_bootstrap}',
+    });
+  });
+
+  it('S3.2-09 — policy exige vínculo ativo, User e Organization dos settings internos', async () => {
+    const result = await fixture.migration.query<{ expression: string }>(
+      `select pg_get_expr(p.polqual,p.polrelid) as expression
+       from pg_policy p where p.polrelid='public.memberships'::regclass
+       and p.polname='membership_bootstrap_select'`,
+    );
+    const expression = result.rows[0]?.expression ?? '';
+    expect(expression).toContain('(active = true)');
+    expect(expression).toContain(
+      "current_setting('lgpd.bootstrap_user_id'::text, true)",
+    );
+    expect(expression).toContain(
+      "current_setting('lgpd.bootstrap_organization_id'::text, true)",
+    );
+    expect(expression).toContain('user_id =');
+    expect(expression).toContain('organization_id =');
+  });
+
+  it('S3.2-10 — role dedicada não possui table-level SELECT em memberships', async () => {
+    const result = await fixture.migration.query(
+      "select has_table_privilege('lgpd_membership_bootstrap','public.memberships','SELECT') as allowed",
+    );
+    expect(result.rows[0]?.allowed).toBe(false);
+  });
+
+  it('S3.2-11 — column-level SELECT limita-se às quatro colunas aprovadas', async () => {
+    const result = await fixture.migration.query<{ column_name: string }>(
+      `select column_name from information_schema.column_privileges
+       where table_schema='public' and table_name='memberships'
+       and grantee='lgpd_membership_bootstrap' and privilege_type='SELECT'
+       order by column_name`,
+    );
+    expect(result.rows.map((row) => row.column_name)).toEqual([
+      'active',
+      'id',
+      'organization_id',
+      'user_id',
+    ]);
+  });
+
+  it('S3.2-12 — role dedicada não possui INSERT, UPDATE ou DELETE em memberships', async () => {
+    for (const privilege of ['INSERT', 'UPDATE', 'DELETE']) {
+      const result = await fixture.migration.query(
+        "select has_table_privilege('lgpd_membership_bootstrap','public.memberships',$1) as allowed",
+        [privilege],
+      );
+      expect(result.rows[0]?.allowed).toBe(false);
+    }
+  });
+
+  it('S3.2-13 — role dedicada não acessa tabelas fora de memberships', async () => {
+    for (const table of [
+      'users',
+      'organizations',
+      'external_identities',
+      'sessions',
+    ]) {
+      const result = await fixture.migration.query(
+        "select has_table_privilege('lgpd_membership_bootstrap',$1,'SELECT,INSERT,UPDATE,DELETE') as allowed",
+        [`public.${table}`],
+      );
+      expect(result.rows[0]?.allowed).toBe(false);
+    }
+  });
+
+  it('S3.2-14 — role dedicada possui USAGE mínimo e não retém CREATE', async () => {
+    const result = await fixture.migration.query(
+      `select
+        has_schema_privilege('lgpd_membership_bootstrap','public','USAGE') as public_usage,
+        has_schema_privilege('lgpd_membership_bootstrap','public','CREATE') as public_create,
+        has_schema_privilege('lgpd_membership_bootstrap','auth_private','USAGE') as private_usage,
+        has_schema_privilege('lgpd_membership_bootstrap','auth_private','CREATE') as private_create`,
+    );
+    expect(result.rows[0]).toEqual({
+      public_usage: true,
+      public_create: false,
+      private_usage: true,
+      private_create: false,
+    });
+  });
+
+  it('S3.2-15 — auth_private preserva ownership da DEC-057', async () => {
+    const result = await fixture.migration.query(
+      "select pg_get_userbyid(nspowner) as owner from pg_namespace where nspname='auth_private'",
+    );
+    expect(result.rows[0]?.owner).toBe('lgpd_auth_persistence');
+  });
+
+  it('S3.2-16 — primitive possui owner, SECURITY DEFINER, STRICT e search_path aprovados', async () => {
+    const result = await fixture.migration.query<{
+      owner: string;
+      security_definer: boolean;
+      strict: boolean;
+      volatility: string;
+      config: string[];
+    }>(
+      `select pg_get_userbyid(p.proowner) as owner,p.prosecdef as security_definer,
+        p.proisstrict as strict,p.provolatile as volatility,p.proconfig as config
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+    );
+    expect(result.rows[0]).toEqual({
+      owner: 'lgpd_membership_bootstrap',
+      security_definer: true,
+      strict: true,
+      volatility: 'v',
+      config: ['search_path=pg_catalog, pg_temp'],
+    });
+  });
+
+  it('S3.2-17 — primitive possui parâmetros e retorno mínimos', async () => {
+    const result = await fixture.migration.query(
+      `select pg_get_function_identity_arguments(p.oid) as arguments,
+        pg_get_function_result(p.oid) as result
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+    );
+    expect(result.rows[0]).toEqual({
+      arguments: 'authenticated_user_id uuid, requested_organization_id uuid',
+      result: 'TABLE(membership_id uuid, organization_id uuid)',
+    });
+  });
+
+  it('S3.2-18 — PUBLIC não executa, runtime executa e migrator não recebe EXECUTE', async () => {
+    const result = await fixture.migration.query(
+      `select
+        has_function_privilege('public',p.oid,'EXECUTE') as public_execute,
+        has_function_privilege($1,p.oid,'EXECUTE') as runtime_execute,
+        has_function_privilege($2,p.oid,'EXECUTE') as migrator_execute
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='auth_private' and p.proname='resolve_membership'
+         and pg_get_function_identity_arguments(p.oid) =
+           'authenticated_user_id uuid, requested_organization_id uuid'`,
+      [fixture.runtimeRole, fixture.migrationRole],
+    );
+    expect(result.rows[0]).toEqual({
+      public_execute: false,
+      runtime_execute: true,
+      migrator_execute: false,
+    });
+  });
+
+  it('S3.2-19 — vínculo próprio ativo retorna somente os dois IDs', async () => {
+    const resolved = await resolveMembership(fixture.database, U, A);
+    expect(resolved).toEqual({ membershipId: M_A, organizationId: A });
+    expect(Object.keys(resolved ?? {}).sort()).toEqual([
+      'membershipId',
+      'organizationId',
+    ]);
+  });
+
+  it('S3.2-20 — Membership inexistente retorna ausência', async () => {
+    expect(
+      await resolveMembership(fixture.database, randomUUID(), A),
+    ).toBeNull();
+  });
+
+  it('S3.2-21 — Membership inativa retorna a mesma ausência', async () => {
+    await tenant(A, (tx) =>
+      tx.execute(sql`update memberships set active=false where id=${M_A}`),
+    );
+    expect(await resolveMembership(fixture.database, U, A)).toBeNull();
+  });
+
+  it('S3.2-22 — Organization inexistente retorna a mesma ausência', async () => {
+    expect(
+      await resolveMembership(fixture.database, U, randomUUID()),
+    ).toBeNull();
+  });
+
+  it('S3.2-23 — User diferente não obtém Membership da Organization', async () => {
+    expect(
+      await resolveMembership(fixture.database, randomUUID(), A),
+    ).toBeNull();
+  });
+
+  it('S3.2-24 — Organization solicitada seleciona somente o vínculo correspondente', async () => {
+    expect(await resolveMembership(fixture.database, U, B)).toEqual({
+      membershipId: M_B,
+      organizationId: B,
+    });
+  });
+
+  it('S3.2-25 — parâmetros NULL produzem zero linhas por STRICT', async () => {
+    const result = await fixture.runtime.query(
+      'select * from auth_private.resolve_membership(null,$1)',
+      [A],
+    );
+    expect(result.rows).toHaveLength(0);
+  });
+
+  it('S3.2-26 — settings falsificados não permitem leitura direta sem tenant autorizado', async () => {
+    const client = await fixture.runtime.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        "select set_config('lgpd.bootstrap_user_id',$1,true),set_config('lgpd.bootstrap_organization_id',$2,true)",
+        [U, A],
+      );
+      expect(
+        (
+          await client.query(
+            'select id,organization_id,user_id,active from public.memberships',
+          )
+        ).rows,
+      ).toHaveLength(0);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+  });
+
+  it('S3.2-27 — primitive restaura settings anteriores e não deixa resíduo no pool', async () => {
+    const client = await fixture.runtime.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        "select set_config('lgpd.bootstrap_user_id','anterior-user',true),set_config('lgpd.bootstrap_organization_id','anterior-org',true)",
+      );
+      expect(
+        (
+          await client.query(
+            'select * from auth_private.resolve_membership($1,$2)',
+            [U, A],
+          )
+        ).rows,
+      ).toEqual([{ membership_id: M_A, organization_id: A }]);
+      const restored = await client.query(
+        "select current_setting('lgpd.bootstrap_user_id',true) as user_id,current_setting('lgpd.bootstrap_organization_id',true) as organization_id",
+      );
+      expect(restored.rows[0]).toEqual({
+        user_id: 'anterior-user',
+        organization_id: 'anterior-org',
+      });
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
+    const clean = await fixture.runtime.query(
+      "select nullif(current_setting('lgpd.bootstrap_user_id',true),'') as user_id,nullif(current_setting('lgpd.bootstrap_organization_id',true),'') as organization_id",
+    );
+    expect(clean.rows[0]).toEqual({ user_id: null, organization_id: null });
+  });
+
+  it('S3.2-28 — provisionamento repetido mantém uma policy, uma function e primitives DEC-057 intactos', async () => {
+    const policies = await fixture.migration.query(
+      "select count(*)::int as count from pg_policy where polrelid='public.memberships'::regclass and polname='membership_bootstrap_select'",
+    );
+    expect(policies.rows[0]?.count).toBe(1);
+    const functions = await fixture.migration.query<{ name: string }>(
+      "select proname as name from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth_private' order by proname",
+    );
+    expect(functions.rows.map((row) => row.name)).toEqual([
+      'create_session',
+      'resolve_external_identity',
+      'resolve_membership',
+      'resolve_session',
+      'revoke_session',
+    ]);
+    await fixture.runtime.query('set search_path = public, pg_temp');
+    expect(await resolveMembership(fixture.database, U, A)).toEqual({
+      membershipId: M_A,
+      organizationId: A,
+    });
   });
 });
