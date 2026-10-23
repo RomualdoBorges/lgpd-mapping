@@ -5,6 +5,23 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
+## AUTH-F.1 — plano proposto de política de leitura D1
+
+AUTHQ-016 DECIDED → [DEC-072 APPROVED](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1). Política aprovada em 2026-10-23; implementação ainda não autorizada nesta etapa e autorização funcional não declarada concluída. AUTHQ-004 permanece IN_ANALYSIS no escopo remanescente; S3.5 estrutural permanece concluída.
+
+Sequência de implementação proposta, dependente de autorização específica:
+
+1. Usar a matriz Role × scope e os contratos aprovados na DEC-072; obter autorização específica para o recorte de código antes de iniciar.
+2. Implementar somente contratos internos e validação integral, sem alterar `ResolvedMembershipGrants`, `AuthorizedTenantContext` ou resolução estrutural. Cobrir critérios aprovados AC-001/002/010/011/012.
+3. Implementar política pura das duas operações e projeção de alcance por grant/contexto. Cobrir AC-003 a AC-009 e AC-011/012, incluindo o caso adverso COLLABORATOR/BU[A] + MANAGER/BU[B] para ROPA. Cada grant BU vazio contribui vazio sem anular outro aplicável; comparar áreas repetidas como conjuntos, sem contradição por ordem.
+4. Implementar verificação pura de alvo confiável, sem lookup, endpoints ou decisões HTTP. Cobrir AC-013. Não definir cardinalidade de Activities nem semântica de projeções ROPA com múltiplas áreas.
+5. Verificar preservação da propagação de falhas na composição, limites e regressões S3.4/S3.5, conforme AC-014/015; executar verificações pertinentes somente na implementação autorizada. Não ampliar escopo para banco ou HTTP.
+6. Auditar a política interna e registrar evidências reais. A integração futura com consultas/endpoints exigirá planejamento próprio e testes PostgreSQL/HTTP de filtros funcionais, tenant e não enumeração conforme DEC-066.
+
+Arquivos de código candidatos para etapa futura: contratos/política em `apps/api/src/authorization/` e testes em `apps/api/test/unit/`; nomes finais dependem do planejamento aprovado. Nenhum arquivo de código é criado nesta finalização documental. Os critérios aprovados não são resultados executados.
+
+Fora do recorte: escrita, workflow, ADMIN/PLATFORM_ADMIN, administração de concessões, GET /me, frontend, novos endpoints, schema, migrations, SQL e alterações de RLS. Questões dessas entregas continuam pendentes.
+
 ## Frontend shell — escolhas aprovadas, implementação pendente
 
 [DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell), aprovada em 2026-10-23, registra Tailwind CSS com plugin Vite, componentes próprios e HTML semântico exclusivamente para o primeiro shell, React Router declarativo para a base frontend, Lucide React e Vitest + Testing Library para testes comportamentais. FEQ-013 está DECIDED; FEQ-001 permanece OPEN para a biblioteca global.

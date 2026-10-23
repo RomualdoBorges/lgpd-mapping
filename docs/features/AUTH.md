@@ -6,6 +6,12 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `04-AUTHORIZATION.md`, `07-API.md`, `09-SECURITY.md`, `12-OPEN-QUESTIONS.md`
 
 
+## AUTH-F.1 — política de leitura D1 aprovada, implementação pendente
+
+AUTHQ-016 está DECIDED e a [DEC-072](../13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1) está APPROVED em 2026-10-23. Aprova somente `processing_activity:read` e `ropa:read`: COLLABORATOR/BUSINESS_UNIT lê Activities das áreas explícitas, MANAGER/BUSINESS_UNIT lê Activities/ROPA dessas áreas e DPO/ORGANIZATION lê ambos na Organization autorizada. Demais combinações não concedem leitura D1 nesta política. Não promover scope, herdar áreas ou emprestar áreas entre assignments.
+
+Matriz, contratos conceituais, exemplos e 15 critérios AUTH-F.1-AC-001 a AUTH-F.1-AC-015 estão na decisão canônica. São requisitos aprovados, não evidências de implementação ou testes. Cada grant BUSINESS_UNIT vazio contribui com alcance vazio; o agregado é vazio somente se nenhum grant produzir alcance aplicável. Áreas de assignments repetidos são comparadas como conjuntos, sem contradição por mera diferença de ordem. Inconsistências e erros não são convertidos em negação silenciosa. A S3.5 e seus contratos permanecem inalterados. AUTHQ-004 conserva IN_ANALYSIS para o escopo remanescente e DEC-066 fica preservada para futura integração HTTP. Aguardar autorização específica antes de implementar.
+
 ## S3.5 — resolução estrutural implementada e auditada
 
 AUTHQ-015 → [DEC-070](../13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](../14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
