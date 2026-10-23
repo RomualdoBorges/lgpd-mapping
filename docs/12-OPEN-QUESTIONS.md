@@ -5146,6 +5146,43 @@ A aprovação original autorizou exclusivamente formalização documental. Autor
 
 ---
 
+## AUTHQ-016 — Política funcional mínima de leitura D1 sobre grants estruturais
+
+**Status:** DECIDED
+**Priority:** HIGH
+**Affected Documents:** [04-AUTHORIZATION.md](04-AUTHORIZATION.md), [11-TESTING.md](11-TESTING.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [AUTH.md](features/AUTH.md)
+**Affected Delivery:** AUTH-F.1 — política interna de leitura D1
+**Blocks:** nenhum bloqueio de decisão deste recorte; aplicar DEC-072. A implementação exige autorização específica posterior e não reabre a S3.5 estrutural.
+
+### Question
+
+Aprovar o mapeamento de `processing_activity:read` e `ropa:read` somente para COLLABORATOR/BUSINESS_UNIT, MANAGER/BUSINESS_UNIT e DPO/ORGANIZATION, com demais combinações sem alcance D1, avaliação por grant e união apenas de alcances aplicáveis à mesma operação, Membership e Organization?
+
+### Decision
+
+[DEC-072](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1) está APPROVED, com aprovação humana em 2026-10-23. Aprova contratos explícitos de entrada/alcance/alvo confiável, resultado vazio sem acesso, falha integral para inconsistências, propagação de erros e política imutável sem I/O. Ver a decisão para matriz, exemplos e 15 critérios aprovados, ainda não executados.
+
+Pontos aprovados expressamente: as três combinações exatas, sem promoção de scope; demais combinações estruturalmente válidas sem leitura D1; semântica de união por operação/contexto; repetições idênticas idempotentes e assignments contraditórios inválidos; descriptor mínimo do alvo e nenhum alcance representado por BUSINESS_UNIT vazio. A comparação das áreas de assignments repetidos usa semântica de conjunto; diferenças apenas de ordem ou repetição dos mesmos IDs não são contradição. Cada grant BUSINESS_UNIT vazio contribui com alcance vazio; o agregado é vazio somente quando nenhum grant produz alcance aplicável. Não alterar cadastro ou resolução estrutural para impor essa política.
+
+### Rationale
+
+DEC-039 já define leitura D1; DEC-037/038 preservam cada concessão e seu scope. AUTHQ-004 permanece IN_ANALYSIS apenas para leitura remanescente; esta questão não encerra essa pendência e não redefine revisão, aprovação ou edição.
+
+### Impact
+
+Finalização documental da política aprovada; implementação não iniciada. Não autoriza código, endpoints, SQL, migrations, alteração da DEC-070 ou novos contratos HTTP. DEC-066 permanece aplicável à futura integração. AUTHQ-015 continua DECIDED. Somente AUTHQ-016 muda de OPEN para DECIDED; todas as demais Questions preservam seus estados.
+
+### Proposal Date
+
+2026-10-23
+
+
+### Decision Date
+
+2026-10-23
+
+---
+
 ## BRQ-011 — Bloqueio externo de sistemas na V1
 
 **Status:** DECIDED  
