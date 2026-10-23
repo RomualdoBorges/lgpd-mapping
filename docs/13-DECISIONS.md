@@ -3711,6 +3711,285 @@ A implementação futura adicionará o endpoint de logout da Session atual, usan
 
 ---
 
+# DEC-070 — S3.5 como resolução estrutural de concessões do Membership autorizado
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-23
+
+## Related Questions
+
+AUTHQ-015, integralmente. Complementa DEC-034/035/036/037/038/039/042/043/045/046/049/052/056/062/065/066, sem alterar seus estados ou ampliar permissões funcionais.
+
+## Context
+
+Aprovação humana expressa da Alternativa A, do contrato `ResolvedMembershipGrants`, do tratamento conservador, do privilégio mínimo de Role e dos 17 critérios S3.5-AC-001 a S3.5-AC-017. A autorização recebida permite exclusivamente formalização documental; não autoriza implementação de código, SQL, schema ou migrations.
+
+A S3.4 resolve a Membership própria ativa do User autenticado e produz `AuthorizedTenantContext`. A S3.5 prepara a estrutura de concessões para autorização futura, sem declarar a autorização funcional concluída.
+
+## Decision
+
+Adotar a Alternativa A: limitar a S3.5 à resolução estrutural das concessões do Membership autorizado.
+
+### Contrato interno
+
+`ResolvedMembershipGrants` contém `membershipId`, `authorizedOrganizationId` e `grants[]`. Cada grant contém exclusivamente `roleAssignmentId`, `roleCode`, `scope` e `businessUnitIds[]`. Scope aceita somente ORGANIZATION e BUSINESS_UNIT.
+
+Os dois IDs do envelope vinculam o resultado ao contexto autorizado e não precisam ser repetidos em cada grant. O contrato é separado de `AuthenticatedIdentity` e `AuthorizedTenantContext`, que conservam seus campos e responsabilidades atuais. Resultado, grants e arrays internos são imutáveis em tipos e runtime; congelamento apenas superficial não basta.
+
+### Resolução e passagem explícita
+
+Resolver após resultado positivo da S3.4, recebendo explicitamente `AuthorizedTenantContext`. Organization e Membership vêm exclusivamente desse contexto; o cliente não escolhe Membership nem fornece Organization como autoridade.
+
+Consultar o estado persistido atual por request que necessite das concessões. Session, estado global e cache não são fontes definitivas de grants/scopes. Mudanças confirmadas antes da consulta da request posterior aparecem nessa resolução; não se promete cancelar requests em andamento ou revalidar continuamente uma operação iniciada.
+
+Application/use cases recebem explicitamente o resultado quando necessário. Application/domain não descobrem concessões por Request, Response, Session, estado global ou AsyncLocalStorage; repositories recebem explicitamente parâmetros e transação. A presença do contrato não comprova autorização funcional.
+
+### Concessões independentes e comportamento conservador
+
+Cada RoleAssignment permanece independente, inclusive para roles repetidos. Não calcular produto cartesiano de roles e áreas, unir áreas globalmente ou herdar Business Units automaticamente pela hierarquia.
+
+ORGANIZATION possui `businessUnitIds` vazio e representa alcance organizacional sem enumerar áreas. BUSINESS_UNIT contém somente áreas explicitamente associadas àquela concessão; sem áreas, mantém alcance vazio e nunca é promovido a ORGANIZATION. Scope estrutural não concede permissions automaticamente.
+
+Ausência de grants retorna coleção vazia, sem papel ou acesso padrão. Scope desconhecido ou inconsistência estrutural detectada interrompe a resolução, sem resultado parcial utilizável. Falha de persistência não retorna sucesso vazio. Erros não expõem concessões, existência de recursos ou detalhes internos. Não são criados códigos públicos de erro nem regras administrativas de criação/alteração de concessões.
+
+`roleCode` vem do catálogo persistido e não aprova novos papéis, permissions ou capacidades funcionais.
+
+### Persistência e segurança
+
+Usar `withAuthorizedTenant()` e `withTenant()` com `authorizedOrganizationId` da S3.4. Todas as consultas tenant-bound da operação usam a mesma transação sob RLS/FORCE RLS e filtros explícitos por Organization e Membership. RLS isola tenant e não substitui filtro de Membership ou autorização funcional.
+
+Consultar associações por Organization e RoleAssignment, preservando concessões sem áreas. Obter snapshot coerente dos dados consultados, preferencialmente em uma única consulta. Preservar constraints compostas, contexto local à transação e ausência de tenant persistente na conexão reutilizada pelo pool.
+
+O privilégio mínimo aprovado é `SELECT (id, code) ON public.roles`, por SQL incremental e versionado na implementação, sem editar migrations já aplicadas. Permite leitura dessas duas colunas do catálogo global; não concede escrita, administração, ownership, BYPASSRLS ou acesso adicional a entidades globais. Não criar nova primitive privilegiada nem ampliar o bootstrap de Membership ou seu retorno mínimo.
+
+### Limites
+
+A S3.5 não inclui permission matrix, Role → Permission, ADMIN, PLATFORM_ADMIN, OWN, PLATFORM, catálogo definitivo de roles, custom roles, hierarquia de roles ou administração de concessões. Não inclui aprovação, revisão, arquivamento, transições de workflow, autorização funcional de ProcessingActivity ou outros recursos, `GET /me`, endpoints públicos ou frontend. Não inclui cache autoritativo de grants na Session, ampliação do bootstrap, mutations de negócio ou novos eventos de auditoria de administração de concessões.
+
+DEC-039 permanece válida para leitura funcional de Activities/ROPA no D1. DEC-043 continua exigindo permission, scope e restrições antes de operações protegidas; grants estruturais não satisfazem isoladamente essa obrigação. Preservar os contratos de bootstrap da DEC-065 e a política de não enumeração da DEC-066 nas entregas correspondentes.
+
+## Rationale
+
+Entregar a estrutura necessária à autorização futura, preservando Membership, tenant, scope e concessões independentes, sem consolidar regras funcionais ainda pendentes.
+
+## Consequences
+
+A implementação exigiu e entregou contrato, serviço de composição, repository, integração explícita, privilégio SQL mínimo de Role e testes correspondentes, mediante autorizações posteriores à formalização inicial. Não foi identificada necessidade de alterar schema, constraints ou policies tenant para este recorte; necessidade adicional deverá ser avaliada antes de ampliar o escopo.
+
+DBQ-005 permanece OPEN para os demais catálogos, com Role já coberta por DEC-049. AUTHQ-003, WFQ-003/AUTHQ-001 (alias), AUTHQ-002, AUTHQ-011, AUTHQ-013, APIQ-017, AUTHQ-009 e SECQ-018 permanecem OPEN; AUTHQ-004 permanece IN_ANALYSIS em seu escopo remanescente. Nenhuma outra questão ou Decision é resolvida ou alterada por esta aprovação.
+
+Registro histórico: a formalização inicial não autorizou iniciar a implementação. As autorizações humanas posteriores permitiram S3.5.1 a S3.5.4, cuja conclusão está registrada abaixo; não ampliam o escopo normativo desta decisão.
+
+## Validation — critérios de aceite aprovados
+
+| ID | Critério verificável |
+|---|---|
+| S3.5-AC-001 | Nenhuma resolução de grants começa antes de resultado positivo da S3.4. |
+| S3.5-AC-002 | Membership e Organization da consulta vêm exclusivamente de `AuthorizedTenantContext`. |
+| S3.5-AC-003 | Resolver Membership de A não retorna concessões ou áreas de B, inclusive para User com vínculos nas duas Organizations. |
+| S3.5-AC-004 | Resolver M1 não retorna concessões de M2 pertencente à mesma Organization. |
+| S3.5-AC-005 | Cada grant preserva seu ID, Role, scope e áreas, sem mistura entre concessões. |
+| S3.5-AC-006 | ORGANIZATION retorna lista de áreas vazia, sem expansão ou concessão funcional implícita. |
+| S3.5-AC-007 | BUSINESS_UNIT retorna exatamente suas áreas explícitas; sem áreas, permanece com alcance vazio. |
+| S3.5-AC-008 | Ausência de grants retorna coleção vazia, sem papel padrão. |
+| S3.5-AC-009 | Scope desconhecido ou inconsistência detectada impede resultado utilizável; falha de persistência não retorna sucesso vazio. |
+| S3.5-AC-010 | Inclusão, alteração e remoção confirmadas aparecem na resolução de request posterior, sem concessões congeladas na Session. |
+| S3.5-AC-011 | Resultado e coleções internas resistem a alterações pelo consumidor. |
+| S3.5-AC-012 | Consultas tenant-bound usam a mesma transação e permanecem sob RLS/FORCE RLS. |
+| S3.5-AC-013 | Concorrência entre Organizations e reutilização do pool após commit, rollback e erro não vazam contexto. |
+| S3.5-AC-014 | Runtime lê somente as colunas aprovadas de Role e não recebe escrita ou privilégios administrativos adicionais. |
+| S3.5-AC-015 | Constraints continuam rejeitando relações cross-tenant, scopes não aprovados e áreas em grants ORGANIZATION. |
+| S3.5-AC-016 | Contratos de identidade, tenant e erros do bootstrap permanecem preservados; nenhuma rota de enumeração é criada. |
+| S3.5-AC-017 | Nenhuma operação funcional passa a ser autorizada apenas pela presença de grants. |
+
+Na formalização inicial, os critérios eram requisitos ainda não executados. Após S3.5.1 a S3.5.4, os 17 critérios foram auditados como ATENDIDOS no escopo estrutural. O [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) identifica commits, evidências e resultados reportados; este encerramento não reexecuta testes. Testes estruturais não comprovam autorização funcional.
+
+## Affected Documents
+
+03-DATABASE.md, 04-AUTHORIZATION.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md, 28-PRE-IMPLEMENTATION-CHECKLIST.md, features/AUTH.md e features/ORGANIZATIONS.md.
+
+---
+
+# DEC-071 — Escolhas técnicas e escopo do primeiro frontend shell
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-23
+
+## Related Questions
+
+FEQ-013, integralmente para a solução de roteamento da base frontend. FEQ-001, somente quanto ao primeiro shell; a escolha global de biblioteca permanece OPEN. FEQ-002, FEQ-010 e FEQ-015 permanecem OPEN.
+
+## Context
+
+Após a conclusão estrutural da S3.5, houve aprovação humana expressa da direção visual e das escolhas técnicas do primeiro shell. Esta etapa registra as escolhas; não implementa a interface nem instala dependências. A aprovação visual não equivale à aprovação de um design system corporativo ou à existência de Figma oficial.
+
+## Decision
+
+Adotar para o primeiro shell:
+
+- Tailwind CSS com plugin Vite.
+- Componentes próprios e HTML semântico, exclusivamente para o primeiro shell, sem definir biblioteca global do produto.
+- React Router em modo declarativo para a base frontend.
+- Lucide React como biblioteca de ícones do shell.
+- Vitest e Testing Library para testes comportamentais do frontend.
+- Tokens visuais locais e provisórios: SaaS moderno e minimalista, tema claro, cores neutras e detalhes em azul/índigo. Não constituem design system corporativo aprovado.
+
+O escopo funcional aprovado é App, AppLayout, Sidebar responsiva, Header, HomePage informativa, EmptyState reutilizável, NotFoundPage, rota `/` e fallback, com acessibilidade básica.
+
+O shell não inclui login ou autenticação fictícia, integração real de autenticação, seletor de Organization, permissões funcionais, métricas simuladas, endpoints não existentes ou navegação para módulos indisponíveis. A presença da interface não representa autorização funcional. Não altera o escopo concluído da S3.5.
+
+## Rationale
+
+Criar uma base visual pequena e acessível, compatível com React/TypeScript/Vite e independente dos contratos funcionais ainda pendentes, sem consolidar escolhas globais além da aprovação recebida.
+
+## Consequences
+
+A implementação posterior configurará as dependências e os testes necessários no apps/web, preservando backend, migrations e contratos de autenticação/autorização. Versões exatas e compatibilidade das dependências devem ser verificadas na implementação; esta decisão não fixa versões nem declara pacotes instalados.
+
+FEQ-001 continua OPEN para a biblioteca global. FEQ-002 e FEQ-010 continuam OPEN quanto ao design system e à origem oficial do design; FEQ-015 continua OPEN para seleção de Organization. Nenhuma dessas pendências bloqueia os componentes próprios e tokens provisórios expressamente aprovados para este shell. Nenhuma outra Question é encerrada.
+
+## Validation
+
+Na implementação, verificar rota inicial e fallback, navegação apenas para destinos disponíveis, comportamento responsivo, HTML semântico, teclado, foco visível, nomes acessíveis e estados informativos sem dados simulados. Adicionar testes comportamentais com Vitest e Testing Library e executar as verificações de qualidade pertinentes. Nenhum teste, instalação ou implementação foi realizado neste registro documental.
+
+## Affected Documents
+
+08-FRONTEND.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md e 25-UX-GUIDELINES.md.
+
+---
+
+# DEC-072 — AUTH-F.1: política funcional mínima de leitura D1
+
+**Status:** APPROVED
+**Proposal Date:** 2026-10-23
+**Decision Date:** 2026-10-23
+
+## Related Questions
+
+AUTHQ-016, DECIDED por esta aprovação. AUTHQ-004 permanece IN_ANALYSIS para leitura fora do D1. Relacionada às DEC-037/038/039/043/066/070; não altera decisões anteriores nem aprova implementação.
+
+## Context
+
+A S3.5 entrega `ResolvedMembershipGrants` estrutural, sem permissions ou decisões funcionais. DEC-039 já define a leitura D1. A minuta foi revisada e a política abaixo foi aprovada expressamente em 2026-10-23, com esclarecimentos sobre grants vazios e comparação de áreas por conjunto. A aprovação é documental e normativa; não constitui implementação nem autoriza iniciar código nesta etapa.
+
+## Decision
+
+Adotar somente `processing_activity:read` e `ropa:read`. São nomes semânticos internos; não constituem endpoints, contratos públicos ou catálogo definitivo de permissions/roles.
+
+### Matriz funcional aprovada
+
+| Role do grant | Scope do mesmo grant | processing_activity:read | ropa:read |
+|---|---|---|---|
+| COLLABORATOR | BUSINESS_UNIT | Somente áreas explícitas desse grant | Nenhum alcance |
+| MANAGER | BUSINESS_UNIT | Somente áreas explícitas desse grant | Somente áreas explícitas desse grant |
+| DPO | ORGANIZATION | Organization autorizada do Membership | Organization autorizada do Membership |
+| Qualquer outra combinação | Qualquer scope estrutural válido | Nenhum alcance | Nenhum alcance |
+
+Assim, MANAGER/COLLABORATOR + ORGANIZATION e DPO + BUSINESS_UNIT não concedem leitura D1 nesta política. Não são considerados corrupção estrutural por esse motivo: continuam sendo grants válidos para a S3.5, mas não aplicáveis à política funcional aprovada. Role desconhecido e grants ausentes não concedem acesso. BUSINESS_UNIT sem áreas não concede acesso. Scope desconhecido ou estrutura inválida constituem erro de entrada, não uma combinação funcional simplesmente não aplicável.
+
+### Contratos conceituais aprovados
+
+Contratos internos conceituais aprovados para este recorte, sem alteração dos contratos da S3.4/S3.5. A implementação concreta permanece pendente:
+
+| Contrato | Campos e origem |
+|---|---|
+| `D1ReadPermission` | Somente `processing_activity:read` ou `ropa:read`. |
+| `D1ReadPolicyInput` | `permission`, `authorizedTenantContext` produzido pela S3.4 e `resolvedMembershipGrants` produzido pela S3.5 para esse mesmo contexto. Passagem explícita, sem IDs alternativos. |
+| `D1ReadReach` | `permission`, `membershipId`, `authorizedOrganizationId`, `scope` ORGANIZATION ou BUSINESS_UNIT e `businessUnitIds` imutável. IDs copiados do contexto validado. |
+| `D1ReadTarget` | `resourceKind` correspondente à operação (ProcessingActivity ou ROPA), `organizationId` e, para alvo localizado em área, `businessUnitId`. Descriptor mínimo produzido por aplicação/persistência confiável, não por body/query como autoridade. |
+
+No resultado, ORGANIZATION sempre possui `businessUnitIds: []` e alcança somente a Organization do envelope. BUSINESS_UNIT contém conjunto explícito, sem duplicatas, das áreas efetivamente autorizadas para a operação. BUSINESS_UNIT com lista vazia é a representação de nenhum alcance, inclusive quando todos os grants são não aplicáveis. A presença de um resultado ou de um scope não é um booleano de autorização; nenhum alcance vazio pode liberar operação.
+
+A resolução de alcance para listagens não requer carregar um recurso. Uma verificação pura separada pode receber o alcance e um `D1ReadTarget` confiável: exige correspondência de operação/tipo e Organization; alcance BUSINESS_UNIT exige área explícita do alvo presente no conjunto. Sem área identificada, esse alcance não autoriza o alvo. Isso não aprova recursos sem área, cardinalidades de Activity ou modelo físico do ROPA. Alvos com múltiplas áreas e regras de projeção devem ser definidos na entrega do recurso, sem escolher silenciosamente any/all nesta política mínima.
+
+Os contratos não autenticam contextos fabricados nem garantem atualidade por si próprios. A composição da aplicação continua responsável pela proveniência S3.4 → S3.5 e pelo descriptor do recurso. A política não consulta banco para autenticar ou completar esses valores e não procura recursos globalmente.
+
+### Múltiplos grants e alcance
+
+Avaliar cada grant individualmente, verificando conjuntamente role, scope e permission antes de considerar suas áreas. Combinar somente os alcances aplicáveis à mesma permission e ao mesmo par Membership/Organization. A união de áreas é uma projeção funcional derivada; não modifica nem funde os grants estruturais ou seus `roleAssignmentId`.
+
+Um grant DPO + ORGANIZATION aplicável torna o alcance dessa operação ORGANIZATION; isso resulta do próprio grant, não da promoção de outro. Sem ele, o resultado é BUSINESS_UNIT com união apenas das áreas dos grants aplicáveis. Grants não aplicáveis não anulam um grant aplicável nem emprestam suas áreas a ele. Não expandir hierarquia, não propagar entre Memberships e não criar herança por role.
+
+Exemplo: COLLABORATOR/BU[A] e MANAGER/BU[B] permitem Activities em A/B, mas ROPA somente em B. Acrescentar MANAGER/ORGANIZATION não amplia nenhum desses alcances.
+
+### Entradas inconsistentes e falhas
+
+Rejeitar integralmente, sem alcance parcial, quando os IDs do contexto e do envelope divergem, UUIDs/campos/arrays são inválidos, permission é desconhecida, scope é desconhecido, ORGANIZATION contém áreas ou linhas do mesmo assignment contradizem role/scope/áreas. A validação estrutural não converte role desconhecido em erro se for uma string estruturalmente válida: ele simplesmente não concede leitura D1.
+
+A repetição idêntica de um grant ou de uma área não aumenta o alcance; a projeção usa semântica de conjunto. A comparação de áreas de representações repetidas do mesmo assignment também usa semântica de conjunto: diferenças apenas na ordem ou na repetição dos mesmos IDs não caracterizam contradição. Representações contraditórias do mesmo `roleAssignmentId` são erro, sem redefinir constraints, regras de cadastro ou o comportamento da resolução estrutural. Não alterar `createResolvedMembershipGrants()` para impor regras funcionais.
+
+Inconsistência de entrada deve falhar explicitamente e ser distinguível internamente de resultado válido sem alcance; o tipo concreto do erro será definido na implementação interna, sem novo status/código HTTP. Falhas de persistência da S3.5 são propagadas pela composição, nunca convertidas em lista vazia, negação silenciosa ou sucesso parcial.
+
+### Imutabilidade e ausência de I/O
+
+Política e verificação de alvo puras e síncronas, sem HTTP, Session, banco, rede, relógio, estado global, AsyncLocalStorage ou cache. Criar cópias defensivas e congelar resultado e coleções em runtime, além de tipos readonly. Não modificar entrada nem reutilizar seus arrays mutáveis. Não retornar entidades de persistência ou detalhes sensíveis.
+
+### Limites
+
+Não implementar endpoints, schema, migrations, SQL, novas concessões administrativas, CRUD, Submit, revisão, aprovação, Gate, arquivamento, auditoria funcional, frontend, GET /me, ADMIN, PLATFORM_ADMIN, OWN ou PLATFORM. Não decidir HTTP 403/404: DEC-066 permanece a autoridade para futura integração. Não declarar as leituras de Activities/ROPA entregues por existir uma política interna. Esta aprovação documental não autoriza iniciar código nesta etapa.
+
+## Rationale
+
+Materializar o mínimo da leitura D1 sem ampliar permissões ou scopes por inferência e sem misturar áreas de assignments distintos. O resultado derivado de alcance permite testes independentes do modelo persistido das features.
+
+## Compatibility — política aprovada
+
+Não foi identificado conflito direto: DEC-037 preserva concessões independentes; DEC-038 mantém áreas explícitas e ORGANIZATION restrito ao tenant; DEC-039 fornece a matriz D1; DEC-043 exige permission e scope; DEC-066 permanece para a integração HTTP; DEC-070 permanece estrutural e inalterada. A restrição às três combinações exatas foi aprovada explicitamente nesta decisão como refinamento da leitura D1; não deve ser confundida com funcionalidade já implementada. Em particular, não promover DPO/BU a Organization nem ampliar MANAGER/ORGANIZATION por seu scope isolado.
+
+A revisão humana aprovou que DPO/BUSINESS_UNIT e MANAGER/COLLABORATOR/ORGANIZATION não concedem leitura D1. Não existe promoção implícita de scope. As DEC-037/038/039/043/066/070 permanecem preservadas; esta decisão explicita a semântica funcional do recorte sem alterar a resolução estrutural.
+
+## Examples — casos positivos e adversos
+
+| Entrada/cenário | Resultado esperado |
+|---|---|
+| COLLABORATOR/BU[A], Activities | BUSINESS_UNIT [A] |
+| COLLABORATOR/BU[A], ROPA | BUSINESS_UNIT [] |
+| MANAGER/BU[B], ROPA | BUSINESS_UNIT [B] |
+| DPO/ORGANIZATION do tenant T | ORGANIZATION de T, áreas vazias, para ambas as operações |
+| MANAGER/ORGANIZATION isolado | Nenhum alcance para ambas |
+| DPO/BU[A] isolado | Nenhum alcance para ambas |
+| COLLABORATOR/BU[A] + MANAGER/BU[B], ROPA | Somente B; A não é emprestada |
+| Dois MANAGER/BU[A] e MANAGER/BU[B], mesma operação/contexto | Conjunto A/B, sem mudar os grants |
+| Role repetido em assignments diferentes | Avaliação independente e projeção somente dos alcances aplicáveis |
+| Sem grants, role desconhecido ou BU vazio | Nenhum alcance |
+| Área filha não explicitamente concedida | Sem herança |
+| Alvo de outra Organization ou área fora do alcance | Não autorizado pela verificação pura; nenhum status HTTP definido aqui |
+| Envelope M1 com contexto M2, mesmo tenant | Erro integral, sem alcance |
+| Scope inválido ou assignment contraditório | Erro integral, mesmo havendo outro grant aplicável |
+| Erro de consulta dos grants | Erro propagado, sem chamar política com fallback vazio |
+
+## Validation — critérios aprovados, não executados
+
+| ID | Critério verificável |
+|---|---|
+| AUTH-F.1-AC-001 | Reconhecer apenas as duas operações propostas; entrada com operação desconhecida falha explicitamente. |
+| AUTH-F.1-AC-002 | IDs do contexto e envelope devem coincidir; divergência de Membership ou Organization falha integralmente. |
+| AUTH-F.1-AC-003 | COLLABORATOR/BU concede Activities somente nas áreas explícitas e não concede ROPA. |
+| AUTH-F.1-AC-004 | MANAGER/BU concede ambas as leituras somente nas áreas explícitas. |
+| AUTH-F.1-AC-005 | DPO/ORGANIZATION concede ambas somente na Organization autorizada, com lista de áreas vazia. |
+| AUTH-F.1-AC-006 | Demais combinações e roles desconhecidos não concedem leitura D1 nem ampliam scope. |
+| AUTH-F.1-AC-007 | Cada grant BUSINESS_UNIT vazio contribui com alcance vazio. O resultado agregado é vazio somente quando nenhum grant produz alcance aplicável. |
+| AUTH-F.1-AC-008 | Combinar apenas áreas de grants aplicáveis à mesma operação/contexto, preservando grants individuais e sem produto cartesiano. |
+| AUTH-F.1-AC-009 | Não herdar áreas por hierarquia; conhecer UUID de alvo não concede alcance. |
+| AUTH-F.1-AC-010 | Entrada estrutural inválida ou assignment contraditório impede resultado parcial utilizável. |
+| AUTH-F.1-AC-011 | Repetições idênticas não ampliam alcance; resultado BUSINESS_UNIT contém conjunto sem duplicatas. |
+| AUTH-F.1-AC-012 | Resultado e coleções são profundamente imutáveis e independentes das entradas; avaliação sem I/O/estado global. |
+| AUTH-F.1-AC-013 | Verificação de alvo exige operação/tipo, Organization e área quando necessária; alvo de outro tenant/fora do alcance não é autorizado. |
+| AUTH-F.1-AC-014 | Falhas da resolução/persistência são propagadas sem negação silenciosa ou grants vazios artificiais. |
+| AUTH-F.1-AC-015 | S3.4/S3.5, schema, SQL, HTTP e contratos de erro existentes permanecem inalterados; nenhuma feature funcional é declarada entregue. |
+
+Os 15 critérios são requisitos aprovados para validação futura; não representam testes escritos, execução ou aceite de implementação. Testes unitários futuros devem cobrir matriz, múltiplos grants, entradas inválidas, imutabilidade e alvo. A integração posterior exigirá testes tenant-aware e não enumeração conforme DEC-066, separadamente dos testes desta política pura.
+
+## Consequences
+
+AUTHQ-016 está DECIDED pela aprovação humana desta política. A implementação depende de autorização específica posterior. AUTHQ-004 permanece IN_ANALYSIS no escopo remanescente; todas as demais Questions conservam seus estados. O plano incremental, ainda sem implementação autorizada, está no [plano](14-IMPLEMENTATION-PLAN.md#auth-f1--plano-proposto-de-política-de-leitura-d1).
+
+## Affected Documents
+
+04-AUTHORIZATION.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md e features/AUTH.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -3784,6 +4063,9 @@ A implementação futura adicionará o endpoint de logout da Session atual, usan
 | DEC-067 | Validade temporal e atividade da Session |
 | DEC-068 | Sem renovação automática da Session local |
 | DEC-069 | Logout e revogação da Session atual |
+| DEC-070 | S3.5 — resolução estrutural de concessões do Membership autorizado |
+| DEC-071 | Escolhas técnicas e escopo do primeiro frontend shell |
+| DEC-072 | APPROVED — AUTH-F.1: política funcional mínima de leitura D1 |
 
 ---
 

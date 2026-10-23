@@ -29,6 +29,55 @@ pnpm dev:web
 
 Frontend: <http://127.0.0.1:5173>. Health da API: <http://127.0.0.1:3000/health>. Para executar a API compilada: `pnpm --filter @lgpd/api start`.
 
+### Containers opcionais de desenvolvimento — DC.1
+
+Há dois modos alternativos, sem execução simultânea nas mesmas portas:
+
+| Modo             | Processos Node                        | PostgreSQL                          |
+| ---------------- | ------------------------------------- | ----------------------------------- |
+| Local            | `pnpm dev:api` e `pnpm dev:web`       | Compose, serviço `postgres`         |
+| Compose completo | Serviços `api` e `web`, profile `app` | O mesmo serviço e volume existentes |
+
+O modo local acima permanece disponível. Para a stack completa, após preparar `.env` e o banco LGPD conforme a seção de migrations/provisionamento:
+
+```sh
+docker compose --profile app up -d --build --wait
+```
+
+O contexto de build é a raiz do monorepo. Os Dockerfiles em `apps/api` e `apps/web` usam Node 22.22.3, pnpm 11.7.0 e `pnpm install --frozen-lockfile`. Instalam as dependências do workspace para preservar a resolução do lockfile compartilhado; copiam somente o código/configuração da aplicação correspondente. A instalação das dependências e os processos de desenvolvimento executam como usuário `node`, sem privilégios. São imagens exclusivamente de desenvolvimento, não imagens de produção.
+
+Frontend: <http://127.0.0.1:5173>. API: <http://127.0.0.1:3000/health>. Ambos são publicados apenas em loopback. A API escuta `0.0.0.0:3000` dentro do container e usa `postgres:5432`, independentemente de `DB_HOST`/porta publicados para o modo local. O frontend inicia Vite com `--host 0.0.0.0` sem mudar o script local. O navegador não resolve o hostname interno `api`; o shell atual não faz chamadas ao backend e esta etapa não adiciona proxy, CORS ou contratos de integração.
+
+Compose usa `.env` para interpolar a configuração existente do PostgreSQL. A API recebe explicitamente somente `NODE_ENV=development`, `API_HOST`, `API_PORT`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_RUNTIME_USER` e `DB_RUNTIME_PASSWORD`. Não recebe as credenciais administrativas ou de migration. O frontend recebe apenas `NODE_ENV=development`. Nenhum `.env` é copiado ou montado nas aplicações; `.dockerignore` exclui arquivos de ambiente reais e padrões comuns de segredos, e os Dockerfiles usam cópias explícitas. Nunca colocar segredos em código/manifests copiados para a imagem.
+
+Hot reload: bind mounts seletivos, somente leitura no container, expõem `src` e configurações necessárias. As edições são feitas no host; `node_modules` permanece na imagem e não é ocultado nem compartilhado com o host. Vite usa HMR e a API no container executa `pnpm --filter @lgpd/api exec node --import tsx --watch src/main.ts`, conforme o Dockerfile; o script de desenvolvimento local permanece independente e inalterado. Alterações de manifests, lockfile ou Dockerfiles exigem rebuild:
+
+```sh
+docker compose --profile app up -d --build --wait api web
+```
+
+Não há instalação no startup nem volumes de dependências para sincronizar. Polling não é habilitado por padrão; hot reload em Docker Desktop/WSL deve ser validado antes de acrescentar configuração específica. Arquivos novos nos diretórios montados também ficam disponíveis; arquivos não montados exigem rebuild.
+
+A API aguarda o healthcheck do PostgreSQL. O frontend é independente da API. Os healthchecks HTTP usam Node, sem ferramentas adicionais: `/health` verifica resposta do processo da API e `/` verifica o servidor Vite. Não comprovam readiness completa, migrations, primitives provisionadas, autorização ou renderização no navegador. A API verifica conexão ao banco na inicialização; falhas posteriores do banco não são necessariamente refletidas por `/health`.
+
+Para parar somente as aplicações, preservando o banco e o modo Node local:
+
+```sh
+docker compose --profile app stop api web
+```
+
+Para parar também o PostgreSQL, quando desejado, sem remover seu volume:
+
+```sh
+docker compose stop postgres
+```
+
+Antes de alternar entre os modos, pare os processos que ocupam 3000/5173. O script existente `pnpm db:down` executa `docker compose down`, não uma parada exclusiva do banco; com o profile de aplicações ativo, seu alcance pode incluir a stack. Prefira os comandos `stop` explícitos acima. Não use `down -v` nem remova volumes com dados a preservar.
+
+O projeto `lgpd`, a imagem PostgreSQL, suas variáveis, publicação, healthcheck, bootstrap e volume `postgres_data` são preservados. Não é necessário recriar o banco para habilitar `api`/`web`. O init continua restrito a volume vazio. Migrations e provisionamento administrativo continuam operações separadas e explícitas: não são executados no build/startup das aplicações. Em banco novo, a saúde do PostgreSQL não substitui essa preparação. Containers runtime não recebem credenciais para executar o provisionamento.
+
+Produção é uma entrega separada: frontend estático com fallback SPA, API compilada, dependências de produção, TLS, segredos e readiness precisam de planejamento próprio. Não utilizar Vite dev server ou watchers como estratégia de produção.
+
 ### Ambiente
 
 `.env` é ignorado pelo Git. O exemplo contém somente credenciais fictícias locais. Não utilizar esses valores em ambientes compartilhados ou de produção. Os scripts da API leem o `.env` da raiz; o frontend não recebe credenciais de banco.

@@ -9,6 +9,16 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## Primeiro frontend shell — recorte aprovado
+
+[DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell), aprovada em 2026-10-23, registra Tailwind CSS com plugin Vite, componentes próprios e HTML semântico exclusivamente para o primeiro shell, React Router declarativo para a base frontend, Lucide React e Vitest + Testing Library para testes comportamentais. FEQ-013 está DECIDED; FEQ-001 permanece OPEN para a biblioteca global.
+
+Direção visual: SaaS moderno e minimalista, tema claro, cores neutras e detalhes em azul/índigo. Tokens locais e provisórios; FEQ-002 e FEQ-010 continuam OPEN. Não se afirma existência de design system corporativo aprovado ou de Figma oficial.
+
+Escopo aprovado: App, AppLayout, Sidebar responsiva, Header, HomePage informativa, EmptyState reutilizável, NotFoundPage, rota `/` e fallback, com acessibilidade básica. Não inclui login ou autenticação fictícia, autenticação real, seletor de Organization (FEQ-015 OPEN), permissões funcionais, métricas simuladas, endpoints não existentes ou navegação para módulos indisponíveis. A lista candidata de módulos em seções legadas não autoriza exibi-los neste shell.
+
+Estado: escolhas registradas; implementação, instalação de dependências e testes do shell ainda pendentes. Este registro não altera a conclusão estrutural da S3.5 nem declara autenticação ou autorização frontend implementadas.
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):
@@ -2435,7 +2445,9 @@ Registrar também em `12-OPEN-QUESTIONS.md`.
 
 ### FEQ-001 — Biblioteca de componentes
 
-Será utilizada alguma biblioteca base?
+A escolha global permanece OPEN. A [DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell) aprova componentes próprios e HTML semântico somente para o primeiro shell.
+
+Será utilizada alguma biblioteca base para o restante do produto?
 
 Exemplos:
 
@@ -2452,15 +2464,7 @@ componentes próprios
 
 ### FEQ-013 — Router
 
-Qual solução será utilizada?
-
-Sugestão:
-
-```text
-React Router
-```
-
-ou solução definida pela equipe.
+DECIDED por [DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell): React Router em modo declarativo para a base frontend. Implementação ainda pendente.
 
 **Impacto:** baixo.
 

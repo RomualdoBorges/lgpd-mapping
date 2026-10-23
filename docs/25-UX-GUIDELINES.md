@@ -4,6 +4,16 @@
 > **Status:** Draft  
 > **Objetivo:** definir padrões de experiência e interação para que todas as telas da plataforma mantenham comportamento consistente, previsível, acessível e compatível com os workflows definidos.
 
+## Primeiro shell — direção visual aprovada
+
+[DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell), aprovada em 2026-10-23, registra Tailwind CSS com plugin Vite, componentes próprios e HTML semântico exclusivamente para o primeiro shell, React Router declarativo para a base frontend, Lucide React e Vitest + Testing Library para testes comportamentais. FEQ-013 está DECIDED; FEQ-001 permanece OPEN para a biblioteca global.
+
+Direção visual: SaaS moderno e minimalista, tema claro, cores neutras e detalhes em azul/índigo. Tokens locais e provisórios; FEQ-002 e FEQ-010 continuam OPEN. Não se afirma existência de design system corporativo aprovado ou de Figma oficial.
+
+Escopo aprovado: App, AppLayout, Sidebar responsiva, Header, HomePage informativa, EmptyState reutilizável, NotFoundPage, rota `/` e fallback, com acessibilidade básica. Não inclui login ou autenticação fictícia, autenticação real, seletor de Organization (FEQ-015 OPEN), permissões funcionais, métricas simuladas, endpoints não existentes ou navegação para módulos indisponíveis. A lista candidata de módulos em seções legadas não autoriza exibi-los neste shell.
+
+Estado: escolhas registradas; implementação, instalação de dependências e testes do shell ainda pendentes. Este registro não altera a conclusão estrutural da S3.5 nem declara autenticação ou autorização frontend implementadas.
+
 ---
 
 # 1. Objetivo

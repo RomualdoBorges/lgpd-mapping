@@ -8,6 +8,26 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## AUTH-F.1 — política de leitura D1 aprovada, implementação pendente
+
+AUTHQ-016 está DECIDED e a [DEC-072](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1) está APPROVED em 2026-10-23. Aprova somente `processing_activity:read` e `ropa:read`: COLLABORATOR/BUSINESS_UNIT lê Activities das áreas explícitas, MANAGER/BUSINESS_UNIT lê Activities/ROPA dessas áreas e DPO/ORGANIZATION lê ambos na Organization autorizada. Demais combinações não concedem leitura D1 nesta política. Não promover scope, herdar áreas ou emprestar áreas entre assignments.
+
+Matriz, contratos conceituais, exemplos e 15 critérios AUTH-F.1-AC-001 a AUTH-F.1-AC-015 estão na decisão canônica. São requisitos aprovados, não evidências de implementação ou testes. Cada grant BUSINESS_UNIT vazio contribui com alcance vazio; o agregado é vazio somente se nenhum grant produzir alcance aplicável. Áreas de assignments repetidos são comparadas como conjuntos, sem contradição por mera diferença de ordem. Inconsistências e erros não são convertidos em negação silenciosa. A S3.5 e seus contratos permanecem inalterados. AUTHQ-004 conserva IN_ANALYSIS para o escopo remanescente e DEC-066 fica preservada para futura integração HTTP. Aguardar autorização específica antes de implementar.
+
+## S3.5 — resolução estrutural implementada e auditada
+
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
+
+Os 17 critérios S3.5-AC-001 a S3.5-AC-017 estão registrados integralmente na DEC-070. Foram auditados como ATENDIDOS no escopo estrutural, com inspeção de implementação e assertions. A formalização inicial não executou testes; os resultados reportados posteriormente estão no registro de encerramento do plano. Nenhum teste foi reexecutado neste encerramento documental.
+
+Testes unitários implementados: contrato, concessões independentes (inclusive roles repetidos), ausência de grants, BUSINESS_UNIT sem áreas, scope inválido, imutabilidade profunda e propagação de falhas sem sucesso vazio.
+
+Integração PostgreSQL real com runtime restrito: isolamento por Organization e por Membership no mesmo tenant; áreas exatas por grant; ORGANIZATION sem áreas; atualização/remoção entre requests após commit; Membership desativada rejeitada pela S3.4; RLS sem contexto e sem filtro tenant; constraints por SQL direto; concorrência A/B; mesma conexão reutilizada após commit, rollback e exceção; ausência de SUPERUSER/BYPASSRLS/ownership/alteração de policies; leitura apenas das colunas aprovadas de Role e escrita negada. Verificar ordem S3.4 → resolver, passagem explícita de contexto e preservação dos contratos de erro sem enumeração.
+
+Testes estruturais não comprovam permissions funcionais. Testes de ALLOW/DENY, visibilidade funcional Activities/ROPA, revisão, aprovação e arquivamento ficam para suas entregas, respeitando DEC-039/043/066 e as questões ainda pendentes.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):
