@@ -2,16 +2,16 @@
 
 Data da revisão: 2026-09-18. Este documento organiza pendências; não aprova alternativas nem substitui as especificações.
 
-## S3.5 — resolução estrutural aprovada, implementação pendente
+## S3.5 — resolução estrutural implementada e auditada
 
-AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
 
 - [x] Formalizar AUTHQ-015 como DECIDED e DEC-070 como APPROVED, com data 2026-10-23.
 - [x] Aprovar contrato separado `ResolvedMembershipGrants`, grants individuais, comportamento conservador e 17 critérios S3.5-AC-001 a S3.5-AC-017 registrados integralmente na DEC-070.
-- [x] Aprovar como requisito futuro `SELECT (id, code) ON public.roles`, por SQL incremental versionado; privilégio ainda não aplicado.
-- [ ] Obter autorização humana específica antes de implementar S3.5.
-- [ ] Implementar resolução atual após S3.4, contexto explícito, filtros Organization/Membership, transação `withAuthorizedTenant()`/`withTenant()`, RLS/FORCE RLS e imutabilidade profunda.
-- [ ] Validar os 17 critérios com testes estruturais e PostgreSQL real/runtime restrito, incluindo concorrência e pool; não executados nesta formalização.
+- [x] Implementar o requisito aprovado `SELECT (id, code) ON public.roles`, pela migration incremental `0003_role_read_privilege.sql`; sem declaração de implantação em outros ambientes.
+- [x] Obter autorização humana específica antes de implementar S3.5.
+- [x] Implementar resolução atual após S3.4, contexto explícito, filtros Organization/Membership, transação `withAuthorizedTenant()`/`withTenant()`, RLS/FORCE RLS e imutabilidade profunda.
+- [x] Validar os 17 critérios com testes estruturais e PostgreSQL real/runtime restrito, incluindo concorrência e pool; auditados como ATENDIDOS. Resultados reportados registrados no plano, sem reexecução neste encerramento.
 - [ ] Implementar autorização funcional na entrega posterior, conforme decisões aplicáveis e resolução das questões bloqueadoras do respectivo escopo.
 
 DBQ-005 (demais catálogos), AUTHQ-003, WFQ-003/AUTHQ-001 (alias), AUTHQ-002, AUTHQ-011, AUTHQ-013, APIQ-017, AUTHQ-009 e SECQ-018 continuam OPEN. AUTHQ-004 permanece IN_ANALYSIS. Não criar roles, permissions, workflow ou regras administrativas nesta etapa.

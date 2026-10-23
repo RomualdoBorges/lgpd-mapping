@@ -3760,7 +3760,7 @@ Usar `withAuthorizedTenant()` e `withTenant()` com `authorizedOrganizationId` da
 
 Consultar associações por Organization e RoleAssignment, preservando concessões sem áreas. Obter snapshot coerente dos dados consultados, preferencialmente em uma única consulta. Preservar constraints compostas, contexto local à transação e ausência de tenant persistente na conexão reutilizada pelo pool.
 
-O privilégio mínimo futuro é `SELECT (id, code) ON public.roles`, por SQL incremental e versionado na implementação, sem editar migrations já aplicadas. Permite leitura dessas duas colunas do catálogo global; não concede escrita, administração, ownership, BYPASSRLS ou acesso adicional a entidades globais. Não criar nova primitive privilegiada nem ampliar o bootstrap de Membership ou seu retorno mínimo.
+O privilégio mínimo aprovado é `SELECT (id, code) ON public.roles`, por SQL incremental e versionado na implementação, sem editar migrations já aplicadas. Permite leitura dessas duas colunas do catálogo global; não concede escrita, administração, ownership, BYPASSRLS ou acesso adicional a entidades globais. Não criar nova primitive privilegiada nem ampliar o bootstrap de Membership ou seu retorno mínimo.
 
 ### Limites
 
@@ -3774,13 +3774,13 @@ Entregar a estrutura necessária à autorização futura, preservando Membership
 
 ## Consequences
 
-A implementação futura exigirá contrato, resolver, repository, integração explícita, privilégio SQL mínimo de Role e testes correspondentes. Não foi identificada necessidade de alterar schema, constraints ou policies tenant para este recorte; necessidade adicional deverá ser avaliada antes de ampliar o escopo.
+A implementação exigiu e entregou contrato, serviço de composição, repository, integração explícita, privilégio SQL mínimo de Role e testes correspondentes, mediante autorizações posteriores à formalização inicial. Não foi identificada necessidade de alterar schema, constraints ou policies tenant para este recorte; necessidade adicional deverá ser avaliada antes de ampliar o escopo.
 
 DBQ-005 permanece OPEN para os demais catálogos, com Role já coberta por DEC-049. AUTHQ-003, WFQ-003/AUTHQ-001 (alias), AUTHQ-002, AUTHQ-011, AUTHQ-013, APIQ-017, AUTHQ-009 e SECQ-018 permanecem OPEN; AUTHQ-004 permanece IN_ANALYSIS em seu escopo remanescente. Nenhuma outra questão ou Decision é resolvida ou alterada por esta aprovação.
 
-A formalização não autoriza iniciar a implementação. Código, SQL, migrations e execução de testes dependem de autorização posterior.
+Registro histórico: a formalização inicial não autorizou iniciar a implementação. As autorizações humanas posteriores permitiram S3.5.1 a S3.5.4, cuja conclusão está registrada abaixo; não ampliam o escopo normativo desta decisão.
 
-## Validation — critérios de aceite aprovados, ainda não executados
+## Validation — critérios de aceite aprovados
 
 | ID | Critério verificável |
 |---|---|
@@ -3802,7 +3802,7 @@ A formalização não autoriza iniciar a implementação. Código, SQL, migratio
 | S3.5-AC-016 | Contratos de identidade, tenant e erros do bootstrap permanecem preservados; nenhuma rota de enumeração é criada. |
 | S3.5-AC-017 | Nenhuma operação funcional passa a ser autorizada apenas pela presença de grants. |
 
-Os critérios não constituem evidência de testes executados. Testes estruturais não comprovam autorização funcional.
+Na formalização inicial, os critérios eram requisitos ainda não executados. Após S3.5.1 a S3.5.4, os 17 critérios foram auditados como ATENDIDOS no escopo estrutural. O [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) identifica commits, evidências e resultados reportados; este encerramento não reexecuta testes. Testes estruturais não comprovam autorização funcional.
 
 ## Affected Documents
 

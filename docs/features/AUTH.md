@@ -6,15 +6,15 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `04-AUTHORIZATION.md`, `07-API.md`, `09-SECURITY.md`, `12-OPEN-QUESTIONS.md`
 
 
-## S3.5 — resolução estrutural aprovada, implementação pendente
+## S3.5 — resolução estrutural implementada e auditada
 
-AUTHQ-015 → [DEC-070](../13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+AUTHQ-015 → [DEC-070](../13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](../14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
 
-Contrato interno futuro `ResolvedMembershipGrants`: `membershipId`, `authorizedOrganizationId`, `grants[]`; cada grant: `roleAssignmentId`, `roleCode`, `scope`, `businessUnitIds[]`. Não ampliar `AuthenticatedIdentity` ou `AuthorizedTenantContext`. Passar resultado explicitamente a application/use cases, com objetos e arrays imutáveis em tipos/runtime.
+Contrato interno implementado `ResolvedMembershipGrants`: `membershipId`, `authorizedOrganizationId`, `grants[]`; cada grant: `roleAssignmentId`, `roleCode`, `scope`, `businessUnitIds[]`. Não ampliar `AuthenticatedIdentity` ou `AuthorizedTenantContext`. Passar resultado explicitamente a application/use cases, com objetos e arrays imutáveis em tipos/runtime.
 
 Resolver estado atual por request somente após S3.4, usando seus IDs autorizados, filtros Organization/Membership e mesma transação em `withAuthorizedTenant()`/`withTenant()` sob RLS/FORCE RLS. Sem grants na Session como fonte autoritativa. Roles e áreas não formam produto cartesiano; sem herança automática. ORGANIZATION tem áreas vazias; BUSINESS_UNIT só áreas explícitas e, se vazio, alcance vazio. Ausência de grants retorna coleção vazia; scope desconhecido/inconsistência falha fechado sem parcial e falha de persistência não retorna sucesso vazio.
 
-Requisito futuro: leitura mínima `SELECT (id, code) ON public.roles`, SQL incremental versionado, sem escrita, nova primitive privilegiada ou expansão do bootstrap. Nenhum SQL foi aplicado. Os critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 são requisitos futuros, não testes executados. GET /me, frontend, permissions e operações funcionais permanecem fora desta etapa.
+Leitura mínima implementada pela migration `0003_role_read_privilege.sql`: `SELECT (id, code) ON public.roles`, SQL incremental versionado, sem escrita, nova primitive privilegiada ou expansão do bootstrap. A migration integra a entrega versionada; nenhum SQL é executado neste encerramento. Os critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 foram auditados como ATENDIDOS no escopo estrutural. GET /me, frontend, permissions e operações funcionais permanecem fora desta etapa.
 
 ---
 

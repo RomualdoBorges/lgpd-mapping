@@ -8,13 +8,13 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
-## S3.5 — resolução estrutural aprovada, implementação pendente
+## S3.5 — resolução estrutural implementada e auditada
 
-AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
 
-Os 17 critérios S3.5-AC-001 a S3.5-AC-017 estão registrados integralmente na DEC-070. São requisitos de validação futura; nenhum teste da S3.5 foi executado nesta formalização.
+Os 17 critérios S3.5-AC-001 a S3.5-AC-017 estão registrados integralmente na DEC-070. Foram auditados como ATENDIDOS no escopo estrutural, com inspeção de implementação e assertions. A formalização inicial não executou testes; os resultados reportados posteriormente estão no registro de encerramento do plano. Nenhum teste foi reexecutado neste encerramento documental.
 
-Testes unitários futuros: contrato, concessões independentes (inclusive roles repetidos), ausência de grants, BUSINESS_UNIT sem áreas, scope inválido, imutabilidade profunda e propagação de falhas sem sucesso vazio.
+Testes unitários implementados: contrato, concessões independentes (inclusive roles repetidos), ausência de grants, BUSINESS_UNIT sem áreas, scope inválido, imutabilidade profunda e propagação de falhas sem sucesso vazio.
 
 Integração PostgreSQL real com runtime restrito: isolamento por Organization e por Membership no mesmo tenant; áreas exatas por grant; ORGANIZATION sem áreas; atualização/remoção entre requests após commit; Membership desativada rejeitada pela S3.4; RLS sem contexto e sem filtro tenant; constraints por SQL direto; concorrência A/B; mesma conexão reutilizada após commit, rollback e exceção; ausência de SUPERUSER/BYPASSRLS/ownership/alteração de policies; leitura apenas das colunas aprovadas de Role e escrita negada. Verificar ordem S3.4 → resolver, passagem explícita de contexto e preservação dos contratos de erro sem enumeração.
 

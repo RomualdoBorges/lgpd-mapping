@@ -5,15 +5,34 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
-## S3.5 — resolução estrutural aprovada, implementação pendente
+## S3.5 — resolução estrutural implementada e auditada
 
-AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
 
-Sequência: S3.4 (Membership e tenant autorizados) → S3.5 (contrato e resolução estrutural de grants) → etapa posterior (permission matrix e autorização funcional). A implementação da S3.5 ainda depende de autorização humana específica.
+Sequência: S3.4 (Membership e tenant autorizados) → S3.5 (contrato e resolução estrutural de grants) → etapa posterior (permission matrix e autorização funcional). A implementação estrutural foi autorizada por recortes e concluída; etapas posteriores continuam exigindo definição e aprovação próprias.
 
-Prever contrato `ResolvedMembershipGrants`, resolver, repository, integração explícita e SQL incremental versionado para leitura mínima `SELECT (id, code) ON public.roles`, sem alteração de schema prevista, nova primitive ou expansão do bootstrap. Estado atual por request, filtros Organization/Membership, `withAuthorizedTenant()`/`withTenant()`, RLS/FORCE RLS e imutabilidade profunda são obrigatórios.
+Foram entregues contrato `ResolvedMembershipGrants`, serviço de composição, repository, integração explícita e SQL incremental versionado para leitura mínima `SELECT (id, code) ON public.roles`, sem alteração de schema, nova primitive ou expansão do bootstrap. Estado atual por request, filtros Organization/Membership, `withAuthorizedTenant()`/`withTenant()`, RLS/FORCE RLS e imutabilidade profunda são obrigatórios.
 
-Os 17 critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 definem o aceite futuro. Itens amplos desta fase sobre permissions, /me e UI não integram S3.5. A conclusão estrutural não encerrará a autorização funcional ou as pendências correspondentes.
+Os 17 critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 foram auditados como ATENDIDOS no escopo estrutural. Itens amplos desta fase sobre permissions, /me e UI não integram S3.5. A conclusão estrutural não encerra a autorização funcional ou as pendências correspondentes.
+
+### Encerramento documental da S3.5
+
+S3.5.1 a S3.5.4 estão implementadas e commitadas. A auditoria final classificou S3.5-AC-001 a S3.5-AC-017 como ATENDIDOS no escopo estrutural e aprovou S3.5.4 para commit. Este registro reconcilia a documentação com a entrega; não modifica a DEC-070 nem declara autorização funcional concluída.
+
+| Etapa | Commit | Entrega versionada |
+|---|---|---|
+| S3.5.1 | `958a294` | [Contrato e validação imutáveis](../apps/api/src/authorization/resolved-membership-grants.ts) |
+| S3.5.2 | `608caa1` | [Migration incremental de leitura de Role](../apps/api/drizzle/migrations/0003_role_read_privilege.sql) |
+| S3.5.3 | `60d09aa` | [Repository de leitura dos grants](../apps/api/src/persistence/membership-grants-repository.ts) |
+| S3.5.4 | `27f2a02` | [Composição com contexto autorizado](../apps/api/src/authorization/membership-grants.service.ts) |
+
+Resultados finais reportados antes da auditoria: 122 testes unitários e 121 testes de integração aprovados, incluindo 22 cenários HTTP no total; lint, typecheck, build e db:check aprovados. As contagens são do estado final reportado, não a soma das execuções dos quatro recortes. A auditoria final foi read-only e inspecionou código e assertions; este encerramento documental não executou testes, migrations ou SQL.
+
+Evidências versionadas: [contrato](../apps/api/test/unit/resolved-membership-grants.test.ts), [privilégios e migrations](../apps/api/test/integration/role-read-privilege.test.ts), [repository](../apps/api/test/integration/membership-grants.test.ts), [composição unitária](../apps/api/test/unit/membership-grants.service.test.ts) e [integração HTTP, concorrência e pool](../apps/api/test/integration/tenant-request-context-http.test.ts). Os 17 critérios e seus identificadores permanecem integralmente na [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado).
+
+A composição recebe apenas `AuthorizedTenantContext`, captura cópia local congelada e usa a mesma instância no boundary transacional e no repository. A origem autorizada do contexto continua sendo responsabilidade da S3.4. O serviço não autentica contextos fabricados, não mantém cache, não converte falhas em sucesso vazio e não decide ALLOW/DENY. O provider está registrado no módulo; não foi criado endpoint de produto nem resolução automática em toda request.
+
+Permanecem fora desta entrega permission matrix, Role → Permission, autorização funcional, administração de concessões, workflow, GET /me e frontend. As Questions pendentes mantêm seus estados. A auditoria apontou apenas melhorias opcionais nos testes unitários: explicitar identidade referencial do contexto e tornar mais precisa a descrição/cobertura da falha de abertura/commit; não são bloqueios do encerramento estrutural.
 
 ---
 
@@ -675,7 +694,7 @@ Implementação futura conforme DEC-067/068/069: `expiresAt = createdAt + 12 hor
 
 ## Tenant Request Context implementado
 
-A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. RoleAssignments, roles, scopes e Business Units integram a S3.5 estrutural aprovada em DEC-070, ainda não implementada; permission matrix e autorização funcional ficam para etapa posterior.
+A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. RoleAssignments, roles, scopes e Business Units integram a S3.5 estrutural aprovada em DEC-070, implementada e auditada no escopo estrutural; permission matrix e autorização funcional ficam para etapa posterior.
 
 # 28. Authentication
 

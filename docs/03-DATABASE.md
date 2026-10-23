@@ -7,13 +7,13 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `02-DOMAIN.md`
 
 
-## S3.5 — resolução estrutural aprovada, implementação pendente
+## S3.5 — resolução estrutural implementada e auditada
 
-AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
 
-A implementação futura consultará RoleAssignments por `organization_id` e `membership_id` obtidos exclusivamente de `AuthorizedTenantContext`, associando áreas por Organization + RoleAssignment e Role por seu ID. Preservar concessões sem áreas e snapshot coerente, preferencialmente por consulta única. `withAuthorizedTenant()` abre `withTenant()` com a Organization autorizada; todas as consultas tenant-bound usam a mesma transação, RLS/FORCE RLS e constraints compostas existentes. RLS não isola Memberships do mesmo tenant: o filtro explícito é obrigatório.
+A implementação consulta RoleAssignments por `organization_id` e `membership_id` obtidos exclusivamente de `AuthorizedTenantContext`, associando áreas por Organization + RoleAssignment e Role por seu ID. A consulta única preserva concessões sem áreas e snapshot coerente. `withAuthorizedTenant()` abre `withTenant()` com a Organization autorizada; todas as consultas tenant-bound usam a mesma transação, RLS/FORCE RLS e constraints compostas existentes. RLS não isola Memberships do mesmo tenant: o filtro explícito é obrigatório.
 
-Requisito futuro aprovado: `SELECT (id, code) ON public.roles`, por SQL incremental e versionado, sem editar migrations aplicadas. Não concede escrita no catálogo global, nova primitive privilegiada ou ampliação do bootstrap. Nenhum privilégio foi aplicado nesta formalização. Não se prevê alteração de schema ou policies tenant; necessidades adicionais exigem avaliação prévia. DBQ-005 continua OPEN para demais catálogos; Role já foi decidida em DEC-049.
+Privilégio mínimo implementado pela migration `0003_role_read_privilege.sql`: `SELECT (id, code) ON public.roles`, por SQL incremental e versionado, sem editar migrations aplicadas. Não concede escrita no catálogo global, nova primitive privilegiada ou ampliação do bootstrap. A migration foi validada nos testes PostgreSQL reportados; este encerramento não executa SQL nem atesta implantação em outros ambientes. Não houve alteração de schema ou policies tenant na S3.5; necessidades adicionais exigem avaliação prévia. DBQ-005 continua OPEN para demais catálogos; Role já foi decidida em DEC-049.
 
 ---
 
