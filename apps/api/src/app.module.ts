@@ -6,6 +6,7 @@ import { SessionAuthenticationGuard } from './auth/session-authentication.guard.
 import { SessionAuthenticationService } from './auth/session-authentication.service.js';
 import { TenantContextGuard } from './tenant/tenant-context.guard.js';
 import { TenantContextService } from './tenant/tenant-context.service.js';
+import { MembershipGrantsService } from './authorization/membership-grants.service.js';
 
 @Module({
   controllers: [HealthController],
@@ -16,6 +17,7 @@ import { TenantContextService } from './tenant/tenant-context.service.js';
     SessionAuthenticationGuard,
     TenantContextService,
     TenantContextGuard,
+    MembershipGrantsService,
   ],
 })
 export class AppModule {}

@@ -6,6 +6,18 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `02-DOMAIN.md`, `03-DATABASE.md`, `04-AUTHORIZATION.md`, `05-BUSINESS-RULES.md`, `07-API.md`, `09-SECURITY.md`, `12-OPEN-QUESTIONS.md`, `features/AUTH.md`
 
 
+## S3.5 — resolução estrutural implementada e auditada
+
+AUTHQ-015 → [DEC-070](../13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](../14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
+
+Resolver concessões exclusivamente do par Membership/Organization autorizado pela S3.4. Filtros explícitos dos dois IDs são obrigatórios: RLS isola Organizations, não Memberships da mesma Organization. Consultar áreas por Organization + RoleAssignment, sob `withAuthorizedTenant()`/`withTenant()`, mesma transação e RLS/FORCE RLS, preservando constraints tenant-bound.
+
+`ResolvedMembershipGrants` contém os IDs autorizados e grants individuais (`roleAssignmentId`, `roleCode`, `scope`, `businessUnitIds[]`), imutáveis e passados explicitamente. Não misturar roles/áreas, herdar áreas ou propagar concessões entre vínculos. ORGANIZATION tem áreas vazias; BUSINESS_UNIT sem áreas tem alcance vazio; ausência de grants retorna vazio sem acesso padrão. Scope desconhecido/inconsistência falha fechado e erro de persistência não é sucesso vazio.
+
+Estado atual por request, sem cache autoritativo na Session. Mudanças confirmadas antes da consulta posterior devem ser observadas; sem cancelamento retroativo de requests. Leitura de Role implementada na migration `0003_role_read_privilege.sql`, limitada a `SELECT (id, code) ON public.roles`, por SQL incremental versionado, sem escrita, nova primitive ou ampliação do bootstrap. Administração de Organization/Membership/Business Unit/concessões e autorização funcional ficam fora da S3.5. Os 17 critérios da DEC-070 foram auditados como ATENDIDOS no escopo estrutural.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):

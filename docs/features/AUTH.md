@@ -6,6 +6,18 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `04-AUTHORIZATION.md`, `07-API.md`, `09-SECURITY.md`, `12-OPEN-QUESTIONS.md`
 
 
+## S3.5 — resolução estrutural implementada e auditada
+
+AUTHQ-015 → [DEC-070](../13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](../14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.
+
+Contrato interno implementado `ResolvedMembershipGrants`: `membershipId`, `authorizedOrganizationId`, `grants[]`; cada grant: `roleAssignmentId`, `roleCode`, `scope`, `businessUnitIds[]`. Não ampliar `AuthenticatedIdentity` ou `AuthorizedTenantContext`. Passar resultado explicitamente a application/use cases, com objetos e arrays imutáveis em tipos/runtime.
+
+Resolver estado atual por request somente após S3.4, usando seus IDs autorizados, filtros Organization/Membership e mesma transação em `withAuthorizedTenant()`/`withTenant()` sob RLS/FORCE RLS. Sem grants na Session como fonte autoritativa. Roles e áreas não formam produto cartesiano; sem herança automática. ORGANIZATION tem áreas vazias; BUSINESS_UNIT só áreas explícitas e, se vazio, alcance vazio. Ausência de grants retorna coleção vazia; scope desconhecido/inconsistência falha fechado sem parcial e falha de persistência não retorna sucesso vazio.
+
+Leitura mínima implementada pela migration `0003_role_read_privilege.sql`: `SELECT (id, code) ON public.roles`, SQL incremental versionado, sem escrita, nova primitive privilegiada ou expansão do bootstrap. A migration integra a entrega versionada; nenhum SQL é executado neste encerramento. Os critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 foram auditados como ATENDIDOS no escopo estrutural. GET /me, frontend, permissions e operações funcionais permanecem fora desta etapa.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):
@@ -1324,7 +1336,7 @@ type AuthenticatedIdentity = Readonly<{
 
 Após validar a Session, o mecanismo de autenticação atribui temporariamente esse valor a `request.authenticatedIdentity`. Um contrato/decorator tipado o disponibiliza ao controller, que o passa explicitamente a application/use cases. Application/domain não recebem `Request` ou `Response` e não dependem de NestJS, Express, provider request-scoped ou AsyncLocalStorage para obter identidade. Repositories também não descobrem User, Session ou tenant implicitamente.
 
-Organization, Membership, roles, permissions, Business Units, segredo, digest, cookie, identidade externa, perfil e objetos HTTP não pertencem a `AuthenticatedIdentity`. Pela DEC-062, a S3.4 compõe, somente após resultado positivo de `resolve_membership()`, um contrato separado `AuthorizedTenantContext` com exclusivamente `membershipId` e `authorizedOrganizationId`. Não duplica a identidade, não inclui requestedOrganizationId, roles, permissions, Business Units ou objetos HTTP/banco e pode ser recebido separadamente por controllers e application/use cases. Autorização por roles/scopes será uma estrutura posterior.
+Organization, Membership, roles, permissions, Business Units, segredo, digest, cookie, identidade externa, perfil e objetos HTTP não pertencem a `AuthenticatedIdentity`. Pela DEC-062, a S3.4 compõe, somente após resultado positivo de `resolve_membership()`, um contrato separado `AuthorizedTenantContext` com exclusivamente `membershipId` e `authorizedOrganizationId`. Não duplica a identidade, não inclui requestedOrganizationId, roles, permissions, Business Units ou objetos HTTP/banco e pode ser recebido separadamente por controllers e application/use cases. A estrutura posterior de concessões é a S3.5 aprovada em DEC-070; permission matrix e autorização funcional permanecem para etapa seguinte, ainda não concluídas.
 
 ---
 

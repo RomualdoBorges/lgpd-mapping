@@ -2,12 +2,14 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as poll } from 'node:timers/promises';
 import pg from 'pg';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
 
 // Gates and observations exist only in the exclusive test database, not in the runner.
 export async function verifyConcurrentMigrations(
   preparation: pg.Pool,
   migration: pg.Pool,
   name: string,
+  upgrading = false,
 ) {
   const gate = await preparation.connect();
   const children: ReturnType<typeof spawn>[] = [];
@@ -49,13 +51,24 @@ export async function verifyConcurrentMigrations(
       )
     ).rows;
   }
+  const policyQuery = `select c.relname, c.relrowsecurity, c.relforcerowsecurity,
+    p.polname, p.polcmd, p.polpermissive, p.polroles::text,
+    pg_get_expr(p.polqual,p.polrelid) as using_expression,
+    pg_get_expr(p.polwithcheck,p.polrelid) as check_expression
+    from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    left join pg_policy p on p.polrelid=c.oid
+    where n.nspname='public' and c.relkind='r'
+    order by c.relname,p.polname`;
+  let previousPolicies: unknown[] | null = null;
   try {
+    if (upgrading)
+      previousPolicies = (await preparation.query(policyQuery)).rows;
     await gate.query(
       "select pg_advisory_lock(hashtext('lgpd:structural-migrations'))",
     );
     await gate.query('BEGIN');
     transaction = true;
-    // CREATE TABLE for the official journal must wait on this catalog lock.
+    // Bootstrap DDL and upgrade ACL changes both write to pg_class.
     await gate.query('LOCK TABLE pg_catalog.pg_class IN SHARE MODE');
     for (const label of labels) {
       const child = spawn(
@@ -119,7 +132,23 @@ export async function verifyConcurrentMigrations(
     const empty = await gate.query(
       "select to_regclass('public.__drizzle_migrations') as journal,to_regclass('public.organizations') as organization",
     );
-    if (empty.rows[0]?.journal !== null || empty.rows[0]?.organization !== null)
+    if (upgrading) {
+      if (
+        empty.rows[0]?.journal === null ||
+        empty.rows[0]?.organization === null
+      )
+        throw new Error('Upgrade requer banco previamente migrado.');
+      const previous = await gate.query(
+        'select count(*)::int as count from public.__drizzle_migrations',
+      );
+      if (previous.rows[0]?.count !== 3)
+        throw new Error(
+          'Upgrade deve disputar exatamente três migrations anteriores.',
+        );
+    } else if (
+      empty.rows[0]?.journal !== null ||
+      empty.rows[0]?.organization !== null
+    )
       throw new Error('Bootstrap deve disputar banco vazio.');
     await gate.query('COMMIT');
     transaction = false;
@@ -132,22 +161,37 @@ export async function verifyConcurrentMigrations(
           `Executor real de migration não terminou com sucesso: ${result.output}`,
         );
     }
-    const expectedTimes = [1789754035408, 1789754043586, 1790249267053].map(
-      String,
-    );
+    const expectedTimes = [
+      1789754035408, 1789754043586, 1790249267053, 1792761082815,
+    ].map(String);
     // Assert the exact versioned migrations, without selecting or applying SQL ourselves.
-    const entries = await migration.query<{ created_at: string }>(
-      'select created_at from public.__drizzle_migrations order by created_at',
+    const files = readMigrationFiles({
+      migrationsFolder: fileURLToPath(
+        new URL('../../drizzle/migrations', import.meta.url),
+      ),
+    });
+    const entries = await migration.query<{ created_at: string; hash: string }>(
+      'select created_at,hash from public.__drizzle_migrations order by created_at',
     );
     if (
-      entries.rows.length !== 3 ||
+      entries.rows.length !== 4 ||
       JSON.stringify(entries.rows.map((row) => row.created_at)) !==
-        JSON.stringify(expectedTimes)
+        JSON.stringify(expectedTimes) ||
+      JSON.stringify(entries.rows.map((row) => row.hash)) !==
+        JSON.stringify(files.map((file) => file.hash))
     )
       throw new Error(
-        'Journal deve registrar exatamente as três migrations versionadas.',
+        'Journal deve registrar exatamente as quatro migrations versionadas.',
       );
+    const policiesPreserved =
+      previousPolicies === null
+        ? null
+        : JSON.stringify(previousPolicies) ===
+          JSON.stringify((await preparation.query(policyQuery)).rows);
+    if (policiesPreserved === false)
+      throw new Error('Upgrade alterou RLS ou policies existentes.');
     return {
+      policiesPreserved,
       processIds: children.map((child) => child.pid),
       waitingExecutors: waiting.length,
       protectedExecutors: protectedRows.filter((row) => row.advisory_granted)
