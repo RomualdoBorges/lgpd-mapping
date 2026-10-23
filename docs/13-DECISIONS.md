@@ -3711,6 +3711,105 @@ A implementação futura adicionará o endpoint de logout da Session atual, usan
 
 ---
 
+# DEC-070 — S3.5 como resolução estrutural de concessões do Membership autorizado
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-23
+
+## Related Questions
+
+AUTHQ-015, integralmente. Complementa DEC-034/035/036/037/038/039/042/043/045/046/049/052/056/062/065/066, sem alterar seus estados ou ampliar permissões funcionais.
+
+## Context
+
+Aprovação humana expressa da Alternativa A, do contrato `ResolvedMembershipGrants`, do tratamento conservador, do privilégio mínimo de Role e dos 17 critérios S3.5-AC-001 a S3.5-AC-017. A autorização recebida permite exclusivamente formalização documental; não autoriza implementação de código, SQL, schema ou migrations.
+
+A S3.4 resolve a Membership própria ativa do User autenticado e produz `AuthorizedTenantContext`. A S3.5 prepara a estrutura de concessões para autorização futura, sem declarar a autorização funcional concluída.
+
+## Decision
+
+Adotar a Alternativa A: limitar a S3.5 à resolução estrutural das concessões do Membership autorizado.
+
+### Contrato interno
+
+`ResolvedMembershipGrants` contém `membershipId`, `authorizedOrganizationId` e `grants[]`. Cada grant contém exclusivamente `roleAssignmentId`, `roleCode`, `scope` e `businessUnitIds[]`. Scope aceita somente ORGANIZATION e BUSINESS_UNIT.
+
+Os dois IDs do envelope vinculam o resultado ao contexto autorizado e não precisam ser repetidos em cada grant. O contrato é separado de `AuthenticatedIdentity` e `AuthorizedTenantContext`, que conservam seus campos e responsabilidades atuais. Resultado, grants e arrays internos são imutáveis em tipos e runtime; congelamento apenas superficial não basta.
+
+### Resolução e passagem explícita
+
+Resolver após resultado positivo da S3.4, recebendo explicitamente `AuthorizedTenantContext`. Organization e Membership vêm exclusivamente desse contexto; o cliente não escolhe Membership nem fornece Organization como autoridade.
+
+Consultar o estado persistido atual por request que necessite das concessões. Session, estado global e cache não são fontes definitivas de grants/scopes. Mudanças confirmadas antes da consulta da request posterior aparecem nessa resolução; não se promete cancelar requests em andamento ou revalidar continuamente uma operação iniciada.
+
+Application/use cases recebem explicitamente o resultado quando necessário. Application/domain não descobrem concessões por Request, Response, Session, estado global ou AsyncLocalStorage; repositories recebem explicitamente parâmetros e transação. A presença do contrato não comprova autorização funcional.
+
+### Concessões independentes e comportamento conservador
+
+Cada RoleAssignment permanece independente, inclusive para roles repetidos. Não calcular produto cartesiano de roles e áreas, unir áreas globalmente ou herdar Business Units automaticamente pela hierarquia.
+
+ORGANIZATION possui `businessUnitIds` vazio e representa alcance organizacional sem enumerar áreas. BUSINESS_UNIT contém somente áreas explicitamente associadas àquela concessão; sem áreas, mantém alcance vazio e nunca é promovido a ORGANIZATION. Scope estrutural não concede permissions automaticamente.
+
+Ausência de grants retorna coleção vazia, sem papel ou acesso padrão. Scope desconhecido ou inconsistência estrutural detectada interrompe a resolução, sem resultado parcial utilizável. Falha de persistência não retorna sucesso vazio. Erros não expõem concessões, existência de recursos ou detalhes internos. Não são criados códigos públicos de erro nem regras administrativas de criação/alteração de concessões.
+
+`roleCode` vem do catálogo persistido e não aprova novos papéis, permissions ou capacidades funcionais.
+
+### Persistência e segurança
+
+Usar `withAuthorizedTenant()` e `withTenant()` com `authorizedOrganizationId` da S3.4. Todas as consultas tenant-bound da operação usam a mesma transação sob RLS/FORCE RLS e filtros explícitos por Organization e Membership. RLS isola tenant e não substitui filtro de Membership ou autorização funcional.
+
+Consultar associações por Organization e RoleAssignment, preservando concessões sem áreas. Obter snapshot coerente dos dados consultados, preferencialmente em uma única consulta. Preservar constraints compostas, contexto local à transação e ausência de tenant persistente na conexão reutilizada pelo pool.
+
+O privilégio mínimo futuro é `SELECT (id, code) ON public.roles`, por SQL incremental e versionado na implementação, sem editar migrations já aplicadas. Permite leitura dessas duas colunas do catálogo global; não concede escrita, administração, ownership, BYPASSRLS ou acesso adicional a entidades globais. Não criar nova primitive privilegiada nem ampliar o bootstrap de Membership ou seu retorno mínimo.
+
+### Limites
+
+A S3.5 não inclui permission matrix, Role → Permission, ADMIN, PLATFORM_ADMIN, OWN, PLATFORM, catálogo definitivo de roles, custom roles, hierarquia de roles ou administração de concessões. Não inclui aprovação, revisão, arquivamento, transições de workflow, autorização funcional de ProcessingActivity ou outros recursos, `GET /me`, endpoints públicos ou frontend. Não inclui cache autoritativo de grants na Session, ampliação do bootstrap, mutations de negócio ou novos eventos de auditoria de administração de concessões.
+
+DEC-039 permanece válida para leitura funcional de Activities/ROPA no D1. DEC-043 continua exigindo permission, scope e restrições antes de operações protegidas; grants estruturais não satisfazem isoladamente essa obrigação. Preservar os contratos de bootstrap da DEC-065 e a política de não enumeração da DEC-066 nas entregas correspondentes.
+
+## Rationale
+
+Entregar a estrutura necessária à autorização futura, preservando Membership, tenant, scope e concessões independentes, sem consolidar regras funcionais ainda pendentes.
+
+## Consequences
+
+A implementação futura exigirá contrato, resolver, repository, integração explícita, privilégio SQL mínimo de Role e testes correspondentes. Não foi identificada necessidade de alterar schema, constraints ou policies tenant para este recorte; necessidade adicional deverá ser avaliada antes de ampliar o escopo.
+
+DBQ-005 permanece OPEN para os demais catálogos, com Role já coberta por DEC-049. AUTHQ-003, WFQ-003/AUTHQ-001 (alias), AUTHQ-002, AUTHQ-011, AUTHQ-013, APIQ-017, AUTHQ-009 e SECQ-018 permanecem OPEN; AUTHQ-004 permanece IN_ANALYSIS em seu escopo remanescente. Nenhuma outra questão ou Decision é resolvida ou alterada por esta aprovação.
+
+A formalização não autoriza iniciar a implementação. Código, SQL, migrations e execução de testes dependem de autorização posterior.
+
+## Validation — critérios de aceite aprovados, ainda não executados
+
+| ID | Critério verificável |
+|---|---|
+| S3.5-AC-001 | Nenhuma resolução de grants começa antes de resultado positivo da S3.4. |
+| S3.5-AC-002 | Membership e Organization da consulta vêm exclusivamente de `AuthorizedTenantContext`. |
+| S3.5-AC-003 | Resolver Membership de A não retorna concessões ou áreas de B, inclusive para User com vínculos nas duas Organizations. |
+| S3.5-AC-004 | Resolver M1 não retorna concessões de M2 pertencente à mesma Organization. |
+| S3.5-AC-005 | Cada grant preserva seu ID, Role, scope e áreas, sem mistura entre concessões. |
+| S3.5-AC-006 | ORGANIZATION retorna lista de áreas vazia, sem expansão ou concessão funcional implícita. |
+| S3.5-AC-007 | BUSINESS_UNIT retorna exatamente suas áreas explícitas; sem áreas, permanece com alcance vazio. |
+| S3.5-AC-008 | Ausência de grants retorna coleção vazia, sem papel padrão. |
+| S3.5-AC-009 | Scope desconhecido ou inconsistência detectada impede resultado utilizável; falha de persistência não retorna sucesso vazio. |
+| S3.5-AC-010 | Inclusão, alteração e remoção confirmadas aparecem na resolução de request posterior, sem concessões congeladas na Session. |
+| S3.5-AC-011 | Resultado e coleções internas resistem a alterações pelo consumidor. |
+| S3.5-AC-012 | Consultas tenant-bound usam a mesma transação e permanecem sob RLS/FORCE RLS. |
+| S3.5-AC-013 | Concorrência entre Organizations e reutilização do pool após commit, rollback e erro não vazam contexto. |
+| S3.5-AC-014 | Runtime lê somente as colunas aprovadas de Role e não recebe escrita ou privilégios administrativos adicionais. |
+| S3.5-AC-015 | Constraints continuam rejeitando relações cross-tenant, scopes não aprovados e áreas em grants ORGANIZATION. |
+| S3.5-AC-016 | Contratos de identidade, tenant e erros do bootstrap permanecem preservados; nenhuma rota de enumeração é criada. |
+| S3.5-AC-017 | Nenhuma operação funcional passa a ser autorizada apenas pela presença de grants. |
+
+Os critérios não constituem evidência de testes executados. Testes estruturais não comprovam autorização funcional.
+
+## Affected Documents
+
+03-DATABASE.md, 04-AUTHORIZATION.md, 09-SECURITY.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md, 28-PRE-IMPLEMENTATION-CHECKLIST.md, features/AUTH.md e features/ORGANIZATIONS.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -3784,6 +3883,7 @@ A implementação futura adicionará o endpoint de logout da Session atual, usan
 | DEC-067 | Validade temporal e atividade da Session |
 | DEC-068 | Sem renovação automática da Session local |
 | DEC-069 | Logout e revogação da Session atual |
+| DEC-070 | S3.5 — resolução estrutural de concessões do Membership autorizado |
 
 ---
 

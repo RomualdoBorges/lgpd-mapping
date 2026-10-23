@@ -8,6 +8,18 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## S3.5 — resolução estrutural aprovada, implementação pendente
+
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+
+Após S3.4 positiva, resolver concessões atuais por request com Organization e Membership exclusivamente de `AuthorizedTenantContext`. Usar `withAuthorizedTenant()`/`withTenant()`, mesma transação, filtros explícitos por Organization e Membership e RLS/FORCE RLS. Não manter cache autoritativo na Session, tenant persistente na conexão ou descoberta implícita via Request/estado global/AsyncLocalStorage.
+
+O privilégio futuro de Role limita-se a `SELECT (id, code) ON public.roles`, por SQL incremental versionado, sem escrita, nova primitive privilegiada, ampliação do bootstrap, ownership ou BYPASSRLS. Ele permite leitura dessas colunas do catálogo global e não torna concessões globais. Não foi aplicado nesta etapa.
+
+Grants ausentes ou BUSINESS_UNIT vazio não criam acesso implícito. Scope desconhecido/inconsistência falha fechado, sem parcial utilizável; erros de persistência não viram sucesso vazio nem expõem detalhes internos. Preservar imutabilidade profunda, separação dos contratos e não enumeração DEC-065/066. Mudanças confirmadas antes da consulta posterior são observadas, sem promessa de cancelar requests em andamento.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):

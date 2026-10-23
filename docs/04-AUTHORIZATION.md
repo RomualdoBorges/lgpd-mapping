@@ -8,6 +8,18 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## S3.5 — resolução estrutural aprovada, implementação pendente
+
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+
+`ResolvedMembershipGrants` contém `membershipId`, `authorizedOrganizationId` e `grants[]`. Cada grant contém `roleAssignmentId`, `roleCode`, `scope` (ORGANIZATION ou BUSINESS_UNIT) e `businessUnitIds[]`. O envelope é separado de `AuthenticatedIdentity` e `AuthorizedTenantContext`; objetos e arrays internos são imutáveis em tipos e runtime e são passados explicitamente a application/use cases.
+
+Cada RoleAssignment é independente, inclusive com Role repetido; sem produto cartesiano, união global de áreas ou herança automática. ORGANIZATION possui áreas vazias; BUSINESS_UNIT contém somente áreas explícitas e, sem áreas, tem alcance vazio. Ausência de grants retorna coleção vazia, sem papel/acesso padrão. Scope desconhecido ou inconsistência detectada falha fechado, sem resultado parcial; falha de persistência não retorna sucesso vazio. Grants não concedem permissions automaticamente nem definem catálogo definitivo de roles.
+
+DEC-039 continua definindo leitura de Activities/ROPA no D1; DEC-043 continua exigindo autorização funcional antes das operações protegidas. ADMIN, PLATFORM_ADMIN, revisão, aprovação, arquivamento, administração de concessões, GET /me e frontend não integram S3.5. Nenhuma questão funcional pendente é encerrada.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):

@@ -5,6 +5,18 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
+## S3.5 — resolução estrutural aprovada, implementação pendente
+
+AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. Esta aprovação autoriza somente formalização documental.
+
+Sequência: S3.4 (Membership e tenant autorizados) → S3.5 (contrato e resolução estrutural de grants) → etapa posterior (permission matrix e autorização funcional). A implementação da S3.5 ainda depende de autorização humana específica.
+
+Prever contrato `ResolvedMembershipGrants`, resolver, repository, integração explícita e SQL incremental versionado para leitura mínima `SELECT (id, code) ON public.roles`, sem alteração de schema prevista, nova primitive ou expansão do bootstrap. Estado atual por request, filtros Organization/Membership, `withAuthorizedTenant()`/`withTenant()`, RLS/FORCE RLS e imutabilidade profunda são obrigatórios.
+
+Os 17 critérios S3.5-AC-001 a S3.5-AC-017 da DEC-070 definem o aceite futuro. Itens amplos desta fase sobre permissions, /me e UI não integram S3.5. A conclusão estrutural não encerrará a autorização funcional ou as pendências correspondentes.
+
+---
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):
@@ -663,7 +675,7 @@ Implementação futura conforme DEC-067/068/069: `expiresAt = createdAt + 12 hor
 
 ## Tenant Request Context implementado
 
-A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. Roles, permissions e Business Units permanecem para a etapa posterior de autorização funcional.
+A S3.4 implementa as DEC-052/054/056/062/065: depois da autenticação da Session, valida `X-Organization-Id`, chama exclusivamente o bootstrap restrito de Membership e cria `AuthorizedTenantContext` somente no resultado positivo. O boundary abre `withTenant()` com `authorizedOrganizationId`; header ausente/inválido e autorização negativa seguem os contratos 400/403 aprovados. RoleAssignments, roles, scopes e Business Units integram a S3.5 estrutural aprovada em DEC-070, ainda não implementada; permission matrix e autorização funcional ficam para etapa posterior.
 
 # 28. Authentication
 

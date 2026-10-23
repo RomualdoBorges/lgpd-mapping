@@ -4925,7 +4925,7 @@ Modelo estrutural e documentos afetados harmonizados; não autoriza implementaç
 
 ### Complemento — DEC-052
 
-A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056. A S3.3 implementou a resolução HTTP da Session e `AuthenticatedIdentity`; a S3.4 implementou o transporte por `X-Organization-Id`, o bootstrap de Membership e a composição de `AuthorizedTenantContext` antes de `withTenant()`. Roles, permissions, scopes e a autorização funcional posterior da S3.5 permanecem pendentes. APIQ-020 permanece DECIDED por DEC-043.
+A Organization informada em cada request é apenas requestedOrganizationId. Validar restritamente a Membership própria ativa do User autenticado nessa Organization antes de estabelecer authorizedOrganizationId e chamar withTenant(). Ausência/inatividade não autoriza tenant; troca de Organization exige nova validação e não herda contexto anterior. Session não congela concessões/scopes. A S3.2 implementou a primitive PostgreSQL restrita definida pela DEC-056. A S3.3 implementou a resolução HTTP da Session e `AuthenticatedIdentity`; a S3.4 implementou o transporte por `X-Organization-Id`, o bootstrap de Membership e a composição de `AuthorizedTenantContext` antes de `withTenant()`. A fronteira estrutural da S3.5 foi aprovada em AUTHQ-015 → DEC-070: resolução de RoleAssignments, roles, scopes e áreas explícitas, ainda não implementada. Permission matrix e autorização funcional permanecem para etapa posterior. APIQ-020 permanece DECIDED por DEC-043.
 
 ### Complemento — DEC-054
 
@@ -5105,6 +5105,40 @@ Quais papéis podem consultar Audit Logs? Manager poderá consultar somente a pr
 ### Nota de reconciliação
 
 Consolida as duas perguntas locais de permission + scope da leitura de auditoria.
+
+---
+
+## AUTHQ-015 — Fronteira estrutural da S3.5 e contrato de concessões
+
+**Status:** DECIDED
+**Priority:** HIGH
+**Affected Documents:** [03-DATABASE.md](03-DATABASE.md), [04-AUTHORIZATION.md](04-AUTHORIZATION.md), [09-SECURITY.md](09-SECURITY.md), [11-TESTING.md](11-TESTING.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md), [AUTH.md](features/AUTH.md), [ORGANIZATIONS.md](features/ORGANIZATIONS.md)
+**Affected Delivery:** S3.5 — fundação estrutural de autorização
+**Blocks:** nenhum bloqueio documental pendente nesta questão; aplicar DEC-070. Implementação não autorizada por esta formalização.
+
+### Question
+
+A S3.5 deve limitar-se à resolução atual das concessões do Membership autorizado pela S3.4, preservando individualmente Role, scope e Business Units de cada RoleAssignment, sem implementar permission matrix, Role → Permission ou autorização funcional?
+
+A decisão abrange contrato interno, resolução por request, isolamento Organization/Membership sob RLS, leitura runtime mínima de Role e comportamento conservador para grants vazios ou inválidos.
+
+### Decision
+
+DEC-070 (APPROVED): adotar a Alternativa A, grants estruturais. `ResolvedMembershipGrants` contém `membershipId`, `authorizedOrganizationId` e `grants[]`; cada grant preserva `roleAssignmentId`, `roleCode`, `scope` e `businessUnitIds[]`. Resolver após S3.4, com estado atual por request, contexto explícito e imutabilidade profunda. Ausência de grants retorna coleção vazia; BUSINESS_UNIT sem áreas mantém alcance vazio; scope desconhecido/inconsistência falha fechado e falha de persistência não retorna sucesso vazio.
+
+A leitura runtime futura de `public.roles` limita-se a SELECT nas colunas `id` e `code`, por SQL incremental versionado, sem escrita, nova primitive privilegiada ou ampliação do bootstrap. Os 17 critérios S3.5-AC-001 a S3.5-AC-017 estão registrados integralmente na DEC-070 como requisitos futuros, não testes executados.
+
+### Rationale
+
+Aprovação humana expressa da fronteira estrutural, preservando DEC-035/036/037/038/049/052/056/062 e a autorização funcional obrigatória das entregas posteriores.
+
+### Impact
+
+Formalização documental exclusivamente. Não autoriza implementação, SQL, migrations ou testes. Não altera outras Decisions/Open Questions, nem resolve permissions, ADMIN/PLATFORM_ADMIN, workflow, GET /me ou frontend. DEC-039 permanece válida para leitura funcional do D1.
+
+### Decision Date
+
+2026-10-23
 
 ---
 
