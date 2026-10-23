@@ -2,47 +2,40 @@
 
 /* Local, provisional tokens for the first shell (DEC-071). */
 @theme {
-  --color-shell-background: #f4f6f8;
+  --color-shell-background: #f7f8fb;
   --color-shell-text: #182536;
-  --color-shell-muted: #365978;
-  --color-shell-border: #d8dee8;
+  --color-shell-muted: #526079;
+  --color-shell-border: #dfe4ed;
   --color-shell-accent: #4338ca;
   --font-shell: system-ui, sans-serif;
   --spacing-shell: 0.25rem;
   --radius-shell: 0.5rem;
 }
 
-* {
-  box-sizing: border-box;
-}
 body {
   margin: 0;
   background: var(--color-shell-background);
   color: var(--color-shell-text);
   font-family: var(--font-shell);
 }
-main {
-  margin: 12vh auto;
-  max-width: 42rem;
-  padding: 2rem;
-}
-h1 {
-  font-size: clamp(2rem, 6vw, 3rem);
-  line-height: 1.15;
-}
-p {
-  line-height: 1.7;
-}
-.eyebrow {
-  color: var(--color-shell-muted);
-  font-weight: 600;
-}
-
-a {
-  color: var(--color-shell-accent);
-  text-decoration: underline;
+[hidden] {
+  display: none !important;
 }
 :focus-visible {
   outline: 2px solid var(--color-shell-accent);
   outline-offset: var(--spacing-shell);
+}
+.skip-link {
+  position: absolute;
+  z-index: 10;
+  top: 0.5rem;
+  left: 0.5rem;
+  transform: translateY(-200%);
+  border-radius: var(--radius-shell);
+  background: white;
+  padding: 0.75rem 1rem;
+  color: var(--color-shell-accent);
+}
+.skip-link:focus {
+  transform: translateY(0);
 }
