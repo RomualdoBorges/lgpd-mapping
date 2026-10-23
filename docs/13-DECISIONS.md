@@ -3810,6 +3810,54 @@ Na formalização inicial, os critérios eram requisitos ainda não executados. 
 
 ---
 
+# DEC-071 — Escolhas técnicas e escopo do primeiro frontend shell
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-23
+
+## Related Questions
+
+FEQ-013, integralmente para a solução de roteamento da base frontend. FEQ-001, somente quanto ao primeiro shell; a escolha global de biblioteca permanece OPEN. FEQ-002, FEQ-010 e FEQ-015 permanecem OPEN.
+
+## Context
+
+Após a conclusão estrutural da S3.5, houve aprovação humana expressa da direção visual e das escolhas técnicas do primeiro shell. Esta etapa registra as escolhas; não implementa a interface nem instala dependências. A aprovação visual não equivale à aprovação de um design system corporativo ou à existência de Figma oficial.
+
+## Decision
+
+Adotar para o primeiro shell:
+
+- Tailwind CSS com plugin Vite.
+- Componentes próprios e HTML semântico, exclusivamente para o primeiro shell, sem definir biblioteca global do produto.
+- React Router em modo declarativo para a base frontend.
+- Lucide React como biblioteca de ícones do shell.
+- Vitest e Testing Library para testes comportamentais do frontend.
+- Tokens visuais locais e provisórios: SaaS moderno e minimalista, tema claro, cores neutras e detalhes em azul/índigo. Não constituem design system corporativo aprovado.
+
+O escopo funcional aprovado é App, AppLayout, Sidebar responsiva, Header, HomePage informativa, EmptyState reutilizável, NotFoundPage, rota `/` e fallback, com acessibilidade básica.
+
+O shell não inclui login ou autenticação fictícia, integração real de autenticação, seletor de Organization, permissões funcionais, métricas simuladas, endpoints não existentes ou navegação para módulos indisponíveis. A presença da interface não representa autorização funcional. Não altera o escopo concluído da S3.5.
+
+## Rationale
+
+Criar uma base visual pequena e acessível, compatível com React/TypeScript/Vite e independente dos contratos funcionais ainda pendentes, sem consolidar escolhas globais além da aprovação recebida.
+
+## Consequences
+
+A implementação posterior configurará as dependências e os testes necessários no apps/web, preservando backend, migrations e contratos de autenticação/autorização. Versões exatas e compatibilidade das dependências devem ser verificadas na implementação; esta decisão não fixa versões nem declara pacotes instalados.
+
+FEQ-001 continua OPEN para a biblioteca global. FEQ-002 e FEQ-010 continuam OPEN quanto ao design system e à origem oficial do design; FEQ-015 continua OPEN para seleção de Organization. Nenhuma dessas pendências bloqueia os componentes próprios e tokens provisórios expressamente aprovados para este shell. Nenhuma outra Question é encerrada.
+
+## Validation
+
+Na implementação, verificar rota inicial e fallback, navegação apenas para destinos disponíveis, comportamento responsivo, HTML semântico, teclado, foco visível, nomes acessíveis e estados informativos sem dados simulados. Adicionar testes comportamentais com Vitest e Testing Library e executar as verificações de qualidade pertinentes. Nenhum teste, instalação ou implementação foi realizado neste registro documental.
+
+## Affected Documents
+
+08-FRONTEND.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md e 25-UX-GUIDELINES.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -3884,6 +3932,7 @@ Na formalização inicial, os critérios eram requisitos ainda não executados. 
 | DEC-068 | Sem renovação automática da Session local |
 | DEC-069 | Logout e revogação da Session atual |
 | DEC-070 | S3.5 — resolução estrutural de concessões do Membership autorizado |
+| DEC-071 | Escolhas técnicas e escopo do primeiro frontend shell |
 
 ---
 

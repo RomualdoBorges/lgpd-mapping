@@ -3446,6 +3446,10 @@ CGQ-004
 
 Será utilizada biblioteca de componentes?
 
+### Aprovação limitada — DEC-071
+
+[DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell), aprovada em 2026-10-23: componentes próprios e HTML semântico exclusivamente para o primeiro shell. O status permanece OPEN para a escolha global de biblioteca de componentes; esta aprovação limitada não seleciona shadcn/ui, Radix ou outra biblioteca para todo o produto. FEQ-002 e FEQ-010 permanecem OPEN. Registro documental somente, sem implementação.
+
 ---
 
 ## FEQ-002 — Design System
@@ -5516,19 +5520,31 @@ A aplicação será exclusivamente pt-BR na V1?
 
 ## FEQ-013 — Solução de roteamento
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** LOW  
 **Affected Documents:** [08-FRONTEND.md](08-FRONTEND.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md)  
 **Affected Delivery:** Frontend / UX  
-**Blocks:** implementar a decisão «Solução de roteamento» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** nenhum bloqueio de escolha de roteador; aplicar DEC-071. A implementação da base frontend permanece pendente.
 
 ### Question
 
 Qual solução de roteamento será utilizada no frontend?
 
-### Nota de reconciliação
+### Decision
 
-React Router aparece como sugestão, sem aprovação.
+[DEC-071](13-DECISIONS.md#dec-071--escolhas-técnicas-e-escopo-do-primeiro-frontend-shell) (APPROVED): React Router em modo declarativo para a base frontend. O primeiro shell terá rota `/` e fallback para NotFoundPage; esta escolha não aprova rotas de módulos indisponíveis nem autenticação/autorização frontend.
+
+### Rationale
+
+Solução declarativa para a navegação da base React/Vite, sem exigir modo framework. React Router era apenas sugestão no registro anterior; a aprovação humana expressa agora decide a escolha.
+
+### Impact
+
+Implementação posterior no frontend, sem alteração do backend ou de contratos públicos. Nenhuma dependência foi instalada neste registro.
+
+### Decision Date
+
+2026-10-23
 
 ---
 
