@@ -1,25 +1,41 @@
-* {
-  box-sizing: border-box;
+@import 'tailwindcss';
+
+/* Local, provisional tokens for the first shell (DEC-071). */
+@theme {
+  --color-shell-background: #f7f8fb;
+  --color-shell-text: #182536;
+  --color-shell-muted: #526079;
+  --color-shell-border: #dfe4ed;
+  --color-shell-accent: #4338ca;
+  --font-shell: system-ui, sans-serif;
+  --spacing-shell: 0.25rem;
+  --radius-shell: 0.5rem;
 }
+
 body {
   margin: 0;
-  background: #f4f6f8;
-  color: #182536;
-  font-family: system-ui, sans-serif;
+  background: var(--color-shell-background);
+  color: var(--color-shell-text);
+  font-family: var(--font-shell);
 }
-main {
-  margin: 12vh auto;
-  max-width: 42rem;
-  padding: 2rem;
+[hidden] {
+  display: none !important;
 }
-h1 {
-  font-size: clamp(2rem, 6vw, 3rem);
-  line-height: 1.15;
+:focus-visible {
+  outline: 2px solid var(--color-shell-accent);
+  outline-offset: var(--spacing-shell);
 }
-p {
-  line-height: 1.7;
+.skip-link {
+  position: absolute;
+  z-index: 10;
+  top: 0.5rem;
+  left: 0.5rem;
+  transform: translateY(-200%);
+  border-radius: var(--radius-shell);
+  background: white;
+  padding: 0.75rem 1rem;
+  color: var(--color-shell-accent);
 }
-.eyebrow {
-  color: #365978;
-  font-weight: 600;
+.skip-link:focus {
+  transform: translateY(0);
 }
