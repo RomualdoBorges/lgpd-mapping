@@ -19,7 +19,15 @@ export const ROLE = randomUUID();
 export const GRANT_A = randomUUID();
 export const GRANT_B = randomUUID();
 
-export async function createTestDatabase() {
+type PreviousMigrationPreparation = (context: {
+  migration: pg.Pool;
+  runtime: pg.Pool;
+  runtimeRole: string;
+}) => Promise<void>;
+
+export async function createTestDatabase(
+  preparePreviousMigrations?: PreviousMigrationPreparation,
+) {
   const envPath = fileURLToPath(new URL('../../../../.env', import.meta.url));
   if (existsSync(envPath)) process.loadEnvFile(envPath);
   const runtimeConfig = databaseConfiguration(process.env, 'RUNTIME');
@@ -135,6 +143,12 @@ export async function createTestDatabase() {
     await preparation.query(
       `GRANT USAGE ON SCHEMA public TO "${runtimeConfig.user}"`,
     );
+    if (preparePreviousMigrations)
+      await preparePreviousMigrations({
+        migration,
+        runtime,
+        runtimeRole: runtimeConfig.user,
+      });
     const migrationCheckCoordinator = await admin.connect();
     let concurrency;
     try {
@@ -145,6 +159,7 @@ export async function createTestDatabase() {
         preparation,
         migration,
         name,
+        preparePreviousMigrations !== undefined,
       );
       await migrationCheckCoordinator.query(
         "select pg_advisory_unlock(hashtext('lgpd:test-migration-concurrency-check'))",
@@ -192,6 +207,7 @@ export async function createTestDatabase() {
       concurrency,
       runtime,
       migration,
+      preparation,
       database: drizzle(runtime, { schema }),
       runtimeRole: runtimeConfig.user,
       migrationRole: migrationConfig.user,
