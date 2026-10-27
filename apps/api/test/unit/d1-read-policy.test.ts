@@ -325,6 +325,156 @@ describe('política funcional de leitura D1', () => {
     });
   });
 
+  it.each([
+    { permission: 'processing_activity:read', expectedAreas: [A, B] },
+    { permission: 'ropa:read', expectedAreas: [B] },
+  ] satisfies Array<{ permission: D1ReadPermission; expectedAreas: string[] }>)(
+    'agregação adversa considera somente grants aplicáveis a $permission',
+    ({ permission, expectedAreas }) => {
+      const C = '00000000-0000-4000-8000-000000000007';
+      const D = '00000000-0000-4000-8000-000000000008';
+      const grants = [
+        grant('COLLABORATOR', 'BUSINESS_UNIT', [A], G),
+        grant('MANAGER', 'BUSINESS_UNIT', [B], H),
+        grant(
+          'DPO',
+          'BUSINESS_UNIT',
+          [C],
+          '00000000-0000-4000-8000-000000000009',
+        ),
+        grant(
+          'UNKNOWN_ROLE',
+          'BUSINESS_UNIT',
+          [D],
+          '00000000-0000-4000-8000-000000000010',
+        ),
+        grant(
+          'MANAGER',
+          'ORGANIZATION',
+          [],
+          '00000000-0000-4000-8000-000000000011',
+        ),
+      ];
+      expect(new Set(grants.map((item) => item.roleAssignmentId)).size).toBe(5);
+      const snapshot = JSON.stringify(grants);
+      for (const ordered of [grants, [...grants].reverse()]) {
+        const result = evaluateD1ReadReach(
+          malformed(input(permission, ordered)),
+        );
+        expect(result).toEqual({
+          permission,
+          membershipId: M,
+          authorizedOrganizationId: O,
+          scope: 'BUSINESS_UNIT',
+          businessUnitIds: expect.arrayContaining(expectedAreas),
+        });
+        expect(result.businessUnitIds).toHaveLength(expectedAreas.length);
+        expect(new Set(result.businessUnitIds)).toEqual(new Set(expectedAreas));
+        expect(result.businessUnitIds).not.toContain(C);
+        expect(result.businessUnitIds).not.toContain(D);
+      }
+      expect(JSON.stringify(grants)).toBe(snapshot);
+    },
+  );
+
+  it.each(permissions)(
+    'DPO válido não encobre UUID inválido em grant posterior: %s',
+    (permission) => {
+      const source = input(permission, [
+        grant('DPO', 'ORGANIZATION', [], G),
+        grant('MANAGER', 'BUSINESS_UNIT', [A], 'invalid-uuid'),
+      ]);
+      const snapshot = JSON.stringify(source);
+      let returned: ReturnType<typeof evaluateD1ReadReach> | undefined;
+      expect(() => {
+        returned = evaluateD1ReadReach(malformed(source));
+      }).toThrow(D1ReadContractError);
+      expect(returned).toBeUndefined();
+      expect(JSON.stringify(source)).toBe(snapshot);
+    },
+  );
+
+  it('isola dois Memberships na mesma Organization e preserva o resultado anterior', () => {
+    const secondMembership = '00000000-0000-4000-8000-000000000012';
+    const firstInput = input('ropa:read', [grant()], M, O);
+    const first = evaluateD1ReadReach(malformed(firstInput));
+    const expectedFirst = {
+      permission: 'ropa:read',
+      membershipId: M,
+      authorizedOrganizationId: O,
+      scope: 'BUSINESS_UNIT',
+      businessUnitIds: [A],
+    };
+    expect(first).toEqual(expectedFirst);
+    const secondInput = input(
+      'ropa:read',
+      [grant('MANAGER', 'BUSINESS_UNIT', [B], H)],
+      secondMembership,
+      O,
+    );
+    const second = evaluateD1ReadReach(malformed(secondInput));
+    expect(second).toEqual({
+      permission: 'ropa:read',
+      membershipId: secondMembership,
+      authorizedOrganizationId: O,
+      scope: 'BUSINESS_UNIT',
+      businessUnitIds: [B],
+    });
+    expect(second.businessUnitIds).not.toContain(A);
+    expect(first.businessUnitIds).not.toContain(B);
+    expect(second.businessUnitIds).not.toBe(first.businessUnitIds);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.businessUnitIds)).toBe(true);
+    expect(() => Object.assign(first.businessUnitIds, { 0: B })).toThrow(
+      TypeError,
+    );
+    secondInput.resolvedMembershipGrants.grants[0]?.businessUnitIds.push(A);
+    expect(second.businessUnitIds).toEqual([B]);
+    expect(first).toEqual(expectedFirst);
+    expect(evaluateD1ReadReach(malformed(firstInput))).toEqual(expectedFirst);
+  });
+
+  it('isola duas Organizations e preserva o resultado anterior', () => {
+    const secondOrganization = '00000000-0000-4000-8000-000000000013';
+    const secondMembership = '00000000-0000-4000-8000-000000000014';
+    const firstInput = input('processing_activity:read', [grant()], M, O);
+    const first = evaluateD1ReadReach(malformed(firstInput));
+    const expectedFirst = {
+      permission: 'processing_activity:read',
+      membershipId: M,
+      authorizedOrganizationId: O,
+      scope: 'BUSINESS_UNIT',
+      businessUnitIds: [A],
+    };
+    expect(first).toEqual(expectedFirst);
+    const secondInput = input(
+      'processing_activity:read',
+      [grant('MANAGER', 'BUSINESS_UNIT', [B], H)],
+      secondMembership,
+      secondOrganization,
+    );
+    const second = evaluateD1ReadReach(malformed(secondInput));
+    expect(second).toEqual({
+      permission: 'processing_activity:read',
+      membershipId: secondMembership,
+      authorizedOrganizationId: secondOrganization,
+      scope: 'BUSINESS_UNIT',
+      businessUnitIds: [B],
+    });
+    expect(second.businessUnitIds).not.toContain(A);
+    expect(first.businessUnitIds).not.toContain(B);
+    expect(second.businessUnitIds).not.toBe(first.businessUnitIds);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.businessUnitIds)).toBe(true);
+    expect(() =>
+      Object.assign(first, { authorizedOrganizationId: secondOrganization }),
+    ).toThrow(TypeError);
+    secondInput.resolvedMembershipGrants.grants[0]?.businessUnitIds.push(A);
+    expect(second.businessUnitIds).toEqual([B]);
+    expect(first).toEqual(expectedFirst);
+    expect(evaluateD1ReadReach(malformed(firstInput))).toEqual(expectedFirst);
+  });
+
   it('não expande áreas por hierarquia nem aceita áreas extras como autoridade', () => {
     const source = {
       ...input(),
