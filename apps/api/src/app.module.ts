@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ProcessingActivityController } from './processing-activities/processing-activity.controller.js';
+import { ProcessingActivityReadService } from './processing-activities/processing-activity-read.service.js';
 import { ENVIRONMENT, loadEnvironment } from './config/environment.js';
 import { HealthController } from './health.controller.js';
 import { DatabaseService } from './persistence/database.service.js';
@@ -9,7 +11,7 @@ import { TenantContextService } from './tenant/tenant-context.service.js';
 import { MembershipGrantsService } from './authorization/membership-grants.service.js';
 
 @Module({
-  controllers: [HealthController],
+  controllers: [HealthController, ProcessingActivityController],
   providers: [
     { provide: ENVIRONMENT, useFactory: () => loadEnvironment(process.env) },
     DatabaseService,
@@ -18,6 +20,12 @@ import { MembershipGrantsService } from './authorization/membership-grants.servi
     TenantContextService,
     TenantContextGuard,
     MembershipGrantsService,
+    {
+      provide: ProcessingActivityReadService,
+      inject: [DatabaseService],
+      useFactory: (database: DatabaseService) =>
+        new ProcessingActivityReadService(database),
+    },
   ],
 })
 export class AppModule {}
