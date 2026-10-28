@@ -11,15 +11,19 @@
 
 A leitura D1 considera exclusivamente a área responsável: ORGANIZATION da própria Organization, BUSINESS_UNIT somente nas áreas explícitas, vazio sem leitura. A primeira consulta interna retorna apenas `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`. Ausência e falta de visibilidade são indistinguíveis; falhas contratuais/persistência são erros. Grants e Activity no mesmo snapshot tenant-bound REPEATABLE READ; RLS/FORCE RLS e runtime com leitura mínima, sem BYPASSRLS ou ownership; migration incremental `0004_processing_activities.sql` implementada.
 
-Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As seções posteriores sobre campos, criação, versões e workflow são especificação ampliada, não autorização para o primeiro modelo. Nome/área na identidade estrutural não definem vínculo definitivo com versões. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. P.1, P.2 e P.3 estão implementadas; P.3 foi integrada pela PR #20 (`0a5e20f`). Os limites da DEC-073 permanecem históricos; a autorização pública adicional é exclusiva da DEC-074 abaixo.
+Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As seções posteriores sobre campos, criação, versões e workflow são especificação ampliada, não autorização para o primeiro modelo. Nome/área na identidade estrutural não definem vínculo definitivo com versões. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. P.1, P.2 e P.3 estão implementadas; P.3 foi integrada pela PR #20 (`0a5e20f`). Os limites da DEC-073 permanecem históricos; a leitura individual pública é aprovada pela DEC-074 e a listagem mínima pela DEC-075 abaixo.
 
-## P.4 — contrato público aprovado; endpoint ainda não implementado
+## P.4 — leitura individual implementada
 
 [DEC-074](../13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) APPROVED em 2026-10-28 autoriza `GET /api/v1/processing-activities/:id`. APIQ-011 está DECIDED para envelope `data` contendo exclusivamente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`, com datas ISO 8601 UTC.
 
 Reutilizar guards S3.3/S3.4 e somente a composição P.3, sem receber grants/reach/Membership do cliente. Session inválida: 401; contexto/header ou UUID inválido: 400; bootstrap negado: 403; Activity inexistente/cross-tenant/invisível: mesmo 404 `PROCESSING_ACTIVITY_NOT_FOUND`; falha inesperada: 500 sanitizado. Resumo autorizado: 200. Ver contrato completo em [07-API.md](../07-API.md#28-consultar-atividade).
 
-Não autoriza operações de escrita, listagem, workflow, versões, participantes, ROPA ou frontend. P.4 ainda exige implementação e testes próprios.
+A DEC-074 não autoriza operações de escrita, listagem, workflow, versões, participantes, ROPA ou frontend. P.4 está implementada e integrada pela PR #22 (`c9d6327`, commit `672d677`), com testes unitários e HTTP/PostgreSQL versionados. Nenhum teste foi reexecutado nesta formalização.
+
+## SLICE-007 — listagem mínima aprovada; implementação pendente
+
+[DEC-075](../13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) APPROVED em 2026-10-28 antecipa somente a listagem estrutural mínima antes de SLICE-006. Não renumera o roadmap; criação/edição e SLICE-007 ampliada continuam pendentes. P.1–P.4 estão implementadas. Contrato detalhado na seção 80.
 
 ---
 
@@ -1571,67 +1575,51 @@ serem resolvidas.
 
 # 80. Listagem
 
+[DEC-075](../13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity): listagem mínima aprovada, ainda não implementada.
+
 ```http
 GET /api/v1/processing-activities
 ```
 
-Filtros possíveis:
-
-```text
-status
-
-complianceStatus
-
-businessUnitId
-
-search
-
-hasSensitiveData
-
-hasMinorData
-
-hasInternationalTransfer
+```json
+{
+  "data": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "organizationId": "00000000-0000-4000-8000-000000000002",
+      "businessUnitId": "00000000-0000-4000-8000-000000000003",
+      "name": "Atividade de exemplo",
+      "createdAt": "2026-10-28T12:00:00.000000Z",
+      "updatedAt": "2026-10-28T12:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "hasNextPage": false
+  }
+}
 ```
 
----
+Somente os seis campos por item. Não incluir status, complianceStatus, summaries relacionados ou allowedActions. Usar guards S3.3/S3.4 e somente contexto interno.
+
+Aplicar `processing_activity:read` com a matriz DEC-072 existente e avaliar cada grant independentemente. Considerar exclusivamente a área responsável persistida da Activity. Organization, Membership, grants e alcance nunca vêm de body/query como autoridade. Aplicar Organization e alcance D1 no SQL antes de LIMIT/OFFSET; `hasNextPage` considera somente Activities visíveis após a página solicitada. Grants, página e determinação de `hasNextPage` compartilham uma transação tenant-bound READ ONLY / REPEATABLE READ, sem snapshots independentes. Preservar RLS/FORCE RLS, filtros explícitos e runtime restrito; nenhuma consulta privilegiada ou cache de autorização.
+
+Session ausente/inválida/expirada/revogada: 401, preservando `AUTHENTICATION_REQUIRED`. Header ausente: 400/`ORGANIZATION_CONTEXT_REQUIRED`; header inválido ou ambíguo: 400/`INVALID_ORGANIZATION_CONTEXT`. Query inválida: 400/`VALIDATION_ERROR`, no formato público existente. Tenant não autorizado no bootstrap: 403/`ORGANIZATION_ACCESS_DENIED`. Falhas técnicas ou contratuais internas: 500/`INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem SQL, stack, credenciais ou metadados internos. Não converter erros em coleção vazia.
 
 # 81. Paginação
 
-Listagem deve ser paginada.
+Aceitar somente `page` e `pageSize`. Defaults: `page = 1`, `pageSize = 20`; máximo de `pageSize = 100`. Ambos devem ser inteiros positivos. Rejeitar com 400 zero, negativos, frações, valores não numéricos, parâmetros repetidos ou ambíguos e qualquer parâmetro desconhecido. Não ajustar silenciosamente valores inválidos. Ordenação fixa: `createdAt DESC, id DESC` (`created_at DESC, id DESC` na persistência), sem ordenação configurável. Não retornar total, `totalItems` ou `totalPages`.
 
-Exemplo:
-
-```http
-?page=1&pageSize=20
-```
-
----
+Resultado vazio, inclusive ausência de alcance D1 com tenant autorizado: 200, `data: []`, `hasNextPage: false`; manter page/pageSize válidos. Não retornar 404 para coleção vazia.
 
 # 82. Ordenação
 
-Pode suportar:
-
-```text
-name
-
-updatedAt
-
-createdAt
-```
-
-Não permitir sort arbitrário diretamente convertido em SQL.
-
----
+Somente `createdAt DESC, id DESC`. Sem sort/order configuráveis; não prometer posições estáveis entre requests sob concorrência.
 
 # 83. Busca
 
-Busca pode considerar inicialmente:
-
-```text
-activity.name
-```
-
-Evoluções futuras podem ampliar o escopo.
+Busca textual e filtros permanecem fora da listagem mínima. As propostas anteriores de busca por nome e filtros de status/área não são aprovadas por DEC-075. Questões de participantes, workflow, versões, wizard e ROPA permanecem preservadas.
 
 ---
 

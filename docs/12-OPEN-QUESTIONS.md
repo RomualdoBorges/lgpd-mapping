@@ -4797,11 +4797,15 @@ Single-resource response direto ou envelope `data`?
 **Priority:** LOW  
 **Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md)  
 **Affected Delivery:** API / contratos / frontend  
-**Blocks:** implementar a decisão «Qual pageSize padrão e máximo?» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** decisões fora da listagem mínima aprovada pela DEC-075; nenhum bloqueio pendente deste ponto para o contrato específico dessa listagem.
 
 ### Question
 
 Qual pageSize padrão e máximo?
+
+### Decisão parcial aprovada — listagem mínima de ProcessingActivity
+
+[DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) APPROVED em 2026-10-28 resolve este ponto somente para `GET /api/v1/processing-activities`. Defaults page=1 e pageSize=20; máximo pageSize=100; inteiros positivos, sem zero/negativos/frações/valores não numéricos ou parâmetros repetidos/ambíguos. Sem total. Ordenação fixa createdAt DESC, id DESC. Status OPEN preservado para os demais endpoints; não há resolução global implícita. A listagem ainda não foi implementada.
 
 ---
 
@@ -4825,11 +4829,15 @@ Qual formato para filtros multi-value?
 **Priority:** LOW  
 **Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md)  
 **Affected Delivery:** API / contratos / frontend  
-**Blocks:** implementar a decisão «Query params desconhecidos serão rejeitados ou ignorados?» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** decisões fora da listagem mínima aprovada pela DEC-075; nenhum bloqueio pendente deste ponto para o contrato específico dessa listagem.
 
 ### Question
 
 Query params desconhecidos serão rejeitados ou ignorados?
+
+### Decisão parcial aprovada — listagem mínima de ProcessingActivity
+
+[DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) APPROVED em 2026-10-28 resolve este ponto somente para `GET /api/v1/processing-activities`. Aceitar somente page e pageSize; rejeitar qualquer query parameter desconhecido com 400. Rejeitar também repetições e ambiguidades. Isso não altera a política de query da P.4 individual ou de outros endpoints. Status OPEN preservado para os demais endpoints; não há resolução global implícita. A listagem ainda não foi implementada.
 
 ---
 

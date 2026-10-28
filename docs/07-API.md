@@ -263,7 +263,7 @@ Quando `organizationId` fizer parte de um payload por necessidade funcional, o b
 
 # 10. Formato padrão de resposta
 
-Para a leitura individual de ProcessingActivity, [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data`. APIQ-011 está DECIDED neste recorte; exemplos de outros recursos não constituem decisão geral. P.4 ainda não está implementada.
+Para a leitura individual de ProcessingActivity, [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data`. APIQ-011 está DECIDED neste recorte; exemplos de outros recursos não constituem decisão geral. P.4 está implementada e integrada pela PR #22 (`c9d6327`, commit `672d677`).
 
 Para recurso único:
 
@@ -279,6 +279,8 @@ Para recurso único:
 ---
 
 # 11. Coleções
+
+Para a listagem mínima de ProcessingActivity, prevalece DEC-075: `data` e `pagination { page, pageSize, hasNextPage }`, sem total. O exemplo genérico abaixo não se aplica a esse endpoint.
 
 Para coleções:
 
@@ -335,6 +337,8 @@ Os valores definitivos podem ser configurados.
 ---
 
 # 13. Ordenação
+
+Na listagem mínima da DEC-075, a ordem é fixa `createdAt DESC, id DESC`; parâmetros sort/order não são aceitos. Propostas configuráveis abaixo não pertencem a esse recorte.
 
 Padrão:
 
@@ -659,41 +663,49 @@ Base:
 
 # 27. Listar atividades
 
+**Contrato APPROVED; listagem mínima ainda não implementada.** [DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) antecipa somente o recorte mínimo de SLICE-007; SLICE-006 e SLICE-007 ampliada continuam pendentes.
+
 ```http
 GET /api/v1/processing-activities
 ```
 
-Filtros iniciais:
+Usar guards S3.3/S3.4 e contexto exclusivamente interno. Cada item de `data` possui exatamente os seis campos da DEC-073, sem summaries relacionados ou `allowedActions`.
 
-```text
-page
-pageSize
-search
-status
-complianceStatus
-businessUnitId
-hasSensitiveData
-hasMinorData
-hasInternationalTransfer
-sort
-order
+```json
+{
+  "data": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "organizationId": "00000000-0000-4000-8000-000000000002",
+      "businessUnitId": "00000000-0000-4000-8000-000000000003",
+      "name": "Atividade de exemplo",
+      "createdAt": "2026-10-28T12:00:00.000000Z",
+      "updatedAt": "2026-10-28T12:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "hasNextPage": false
+  }
+}
 ```
 
-A consulta deve respeitar automaticamente:
+Aceitar somente `page` e `pageSize`. Defaults: `page = 1`, `pageSize = 20`; máximo de `pageSize = 100`. Ambos devem ser inteiros positivos. Rejeitar com 400 zero, negativos, frações, valores não numéricos, parâmetros repetidos ou ambíguos e qualquer parâmetro desconhecido. Não ajustar silenciosamente valores inválidos. Ordenação fixa: `createdAt DESC, id DESC` (`created_at DESC, id DESC` na persistência), sem ordenação configurável. Não retornar total, `totalItems` ou `totalPages`.
 
-```text
-organization
-+
-scope
-+
-permissions
-```
+Aplicar `processing_activity:read` com a matriz DEC-072 existente e avaliar cada grant independentemente. Considerar exclusivamente a área responsável persistida da Activity. Organization, Membership, grants e alcance nunca vêm de body/query como autoridade. Aplicar Organization e alcance D1 no SQL antes de LIMIT/OFFSET; `hasNextPage` considera somente Activities visíveis após a página solicitada. Grants, página e determinação de `hasNextPage` compartilham uma transação tenant-bound READ ONLY / REPEATABLE READ, sem snapshots independentes. Preservar RLS/FORCE RLS, filtros explícitos e runtime restrito; nenhuma consulta privilegiada ou cache de autorização.
+
+Sem itens visíveis ou sem alcance D1, retornar 200 e coleção vazia, com `hasNextPage: false`, preservando page/pageSize válidos; não retornar 404.
+
+Session ausente/inválida/expirada/revogada: 401, preservando `AUTHENTICATION_REQUIRED`. Header ausente: 400/`ORGANIZATION_CONTEXT_REQUIRED`; header inválido ou ambíguo: 400/`INVALID_ORGANIZATION_CONTEXT`. Query inválida: 400/`VALIDATION_ERROR`, no formato público existente. Tenant não autorizado no bootstrap: 403/`ORGANIZATION_ACCESS_DENIED`. Falhas técnicas ou contratuais internas: 500/`INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem SQL, stack, credenciais ou metadados internos. Não converter erros em coleção vazia.
+
+Não autoriza criação/edição, filtros de status/áreas, busca, workflow, versões, wizard ou ROPA. As propostas ampliadas não integram este contrato.
 
 ---
 
 # 28. Consultar atividade
 
-**P.4: contrato APPROVED; endpoint ainda não implementado.** [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) autoriza somente:
+**P.4: implementada e integrada pela PR #22 (`c9d6327`).** [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) autoriza somente:
 
 ```http
 GET /api/v1/processing-activities/:id

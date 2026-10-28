@@ -514,7 +514,7 @@ DELETE
 
 # 23. Success Response — Single Resource
 
-[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data` exclusivamente para a leitura individual de ProcessingActivity. Contrato P.4 aprovado para implementação, ainda não implementado:
+[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data` exclusivamente para a leitura individual de ProcessingActivity. P.4 implementada e integrada pela PR #22 (`c9d6327`, commit `672d677`):
 
 ```http
 GET /api/v1/processing-activities/:id
@@ -558,50 +558,37 @@ Não converter erro contratual/persistência em 404. O resultado `null` da P.3 s
 
 # 26. Rastreabilidade de APIQ-011
 
-[APIQ-011](12-OPEN-QUESTIONS.md#apiq-011--single-resource-response-direto-ou-envelope-data) → [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity), APPROVED em 2026-10-28. O contrato público não significa endpoint entregue. Propostas de coleção abaixo continuam propostas independentes.
+[APIQ-011](12-OPEN-QUESTIONS.md#apiq-011--single-resource-response-direto-ou-envelope-data) → [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity), APPROVED em 2026-10-28. P.4 está implementada. A coleção mínima abaixo foi aprovada separadamente pela DEC-075 e ainda não está implementada.
 
 ---
 
 # 27. Collection Response
 
-Formato proposto:
+[DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity): contrato aprovado exclusivamente para a listagem mínima de ProcessingActivity, ainda não implementada. Itens com exatamente os seis campos da DEC-073, sem total.
 
 ```json
 {
-  "items": [
+  "data": [
     {
-      "id": "...",
-      "name": "Payroll"
+      "id": "00000000-0000-4000-8000-000000000001",
+      "organizationId": "00000000-0000-4000-8000-000000000002",
+      "businessUnitId": "00000000-0000-4000-8000-000000000003",
+      "name": "Atividade de exemplo",
+      "createdAt": "2026-10-28T12:00:00.000000Z",
+      "updatedAt": "2026-10-28T12:00:00.000000Z"
     }
   ],
   "pagination": {
     "page": 1,
     "pageSize": 20,
-    "totalItems": 57,
-    "totalPages": 3
+    "hasNextPage": false
   }
 }
 ```
 
----
-
 # 28. Paginação
 
-Estratégia inicial proposta:
-
-```text
-page-based pagination
-```
-
-Parâmetros:
-
-```text
-page
-
-pageSize
-```
-
----
+Aceitar somente `page` e `pageSize`. Defaults: `page = 1`, `pageSize = 20`; máximo de `pageSize = 100`. Ambos devem ser inteiros positivos. Rejeitar com 400 zero, negativos, frações, valores não numéricos, parâmetros repetidos ou ambíguos e qualquer parâmetro desconhecido. Não ajustar silenciosamente valores inválidos. Ordenação fixa: `createdAt DESC, id DESC` (`created_at DESC, id DESC` na persistência), sem ordenação configurável. Não retornar total, `totalItems` ou `totalPages`.
 
 # 29. Exemplo
 
@@ -609,55 +596,17 @@ pageSize
 GET /api/v1/processing-activities?page=2&pageSize=20
 ```
 
----
-
 # 30. Defaults
 
-Valores exatos devem ser centralizados.
-
-Sugestão:
-
-```text
-page = 1
-
-pageSize = 20
-```
-
----
+Page 1 e pageSize 20 quando omitidos. A resposta informa os valores efetivos aprovados pela DEC-075. Não transportar estes defaults automaticamente para outros endpoints.
 
 # 31. Limite máximo
 
-API deve impor:
+PageSize máximo 100 nesta listagem. Aplicar alcance D1 antes de LIMIT/OFFSET; hasNextPage observa somente a continuidade de Activities visíveis no mesmo snapshot dos grants. Não retornar contagem global ou de itens invisíveis.
 
-```text
-maximum pageSize
-```
+# 32. Rastreabilidade de APIQ-012
 
-para evitar queries sem limite.
-
-Valor deve ser configurado/definido.
-
----
-
-# 32. Nova Open Question
-
-Adicionar:
-
-```text
-APIQ-012
-```
-
-**Question:**
-
-```text
-Qual pageSize padrão e máximo da API?
-```
-
-**Priority:**
-
-```text
-LOW
-```
+APIQ-012 permanece OPEN globalmente, com decisão parcial [DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) para este endpoint. APIQ-014 também permanece OPEN globalmente, com rejeição de desconhecidos já aprovada nesta listagem. Nenhuma delas exige nova decisão para esses pontos locais.
 
 ---
 
@@ -679,23 +628,26 @@ se volume justificar.
 
 # 34. Empty Collection
 
-Exemplo:
+DEC-075: tenant autorizado, sem itens ou sem alcance D1, retorna 200. Preservar page/pageSize válidos solicitados; exemplo com defaults:
 
 ```json
 {
-  "items": [],
+  "data": [],
   "pagination": {
     "page": 1,
     "pageSize": 20,
-    "totalItems": 0,
-    "totalPages": 0
+    "hasNextPage": false
   }
 }
 ```
 
+Não retornar 404 nem tratar falha técnica como coleção vazia.
+
 ---
 
 # 35. Sorting
+
+DEC-075 exige ordem fixa `createdAt DESC, id DESC` para a listagem mínima. As propostas configuráveis abaixo não se aplicam a ela; seus parâmetros seriam desconhecidos e rejeitados com 400.
 
 Parâmetros propostos:
 
@@ -872,6 +824,8 @@ Evitar sintaxes excessivamente genéricas na V1.
 ---
 
 # 49. Unknown Query Parameters
+
+Na listagem mínima de ProcessingActivity, DEC-075 já determina rejeição com 400 de tudo que não seja page/pageSize. APIQ-014 continua OPEN para os demais endpoints; as alternativas abaixo referem-se somente ao escopo remanescente.
 
 Backend deve decidir se:
 
@@ -2724,31 +2678,37 @@ PAQ-003
 
 # 151. Exemplo — List Activities
 
-```http
-GET /api/v1/processing-activities?page=1&pageSize=20&sortBy=updatedAt&sortOrder=desc
-```
+Contrato mínimo aprovado pela DEC-075, ainda não implementado:
 
-Response:
+```http
+GET /api/v1/processing-activities?page=1&pageSize=20
+```
 
 ```json
 {
-  "items": [
+  "data": [
     {
-      "id": "uuid",
-      "name": "Employee Payroll",
-      "status": "DRAFT",
-      "complianceStatus": "PENDING",
-      "updatedAt": "2026-09-17T14:30:00.000Z"
+      "id": "00000000-0000-4000-8000-000000000001",
+      "organizationId": "00000000-0000-4000-8000-000000000002",
+      "businessUnitId": "00000000-0000-4000-8000-000000000003",
+      "name": "Atividade de exemplo",
+      "createdAt": "2026-10-28T12:00:00.000000Z",
+      "updatedAt": "2026-10-28T12:00:00.000000Z"
     }
   ],
   "pagination": {
     "page": 1,
     "pageSize": 20,
-    "totalItems": 1,
-    "totalPages": 1
+    "hasNextPage": false
   }
 }
 ```
+
+Aplicar `processing_activity:read` com a matriz DEC-072 existente e avaliar cada grant independentemente. Considerar exclusivamente a área responsável persistida da Activity. Organization, Membership, grants e alcance nunca vêm de body/query como autoridade. Aplicar Organization e alcance D1 no SQL antes de LIMIT/OFFSET; `hasNextPage` considera somente Activities visíveis após a página solicitada. Grants, página e determinação de `hasNextPage` compartilham uma transação tenant-bound READ ONLY / REPEATABLE READ, sem snapshots independentes. Preservar RLS/FORCE RLS, filtros explícitos e runtime restrito; nenhuma consulta privilegiada ou cache de autorização.
+
+Session ausente/inválida/expirada/revogada: 401, preservando `AUTHENTICATION_REQUIRED`. Header ausente: 400/`ORGANIZATION_CONTEXT_REQUIRED`; header inválido ou ambíguo: 400/`INVALID_ORGANIZATION_CONTEXT`. Query inválida: 400/`VALIDATION_ERROR`, no formato público existente. Tenant não autorizado no bootstrap: 403/`ORGANIZATION_ACCESS_DENIED`. Falhas técnicas ou contratuais internas: 500/`INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem SQL, stack, credenciais ou metadados internos. Não converter erros em coleção vazia.
+
+Não adicionar status, complianceStatus, total ou parâmetros de ordenação. Sem itens visíveis, usar a resposta vazia da seção 34.
 
 ---
 

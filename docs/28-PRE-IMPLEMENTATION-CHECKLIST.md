@@ -103,8 +103,12 @@ Systems e Suppliers estão fora da primeira entrega. Os itens abaixo permanecem 
 - [x] ERRQ-002/003/004 decididas pelas DEC-063/064/066: separação 400/422, mensagens públicas em português com códigos estáveis e política 403/404 contra enumeração de recursos tenant-bound.
 - [x] APIQ-011 DECIDED → [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity): envelope `data` aprovado para a resposta individual de ProcessingActivity; não aprova outros recursos ou coleções.
 - [x] P.1/P.2/P.3 implementadas e P.3 integrada pela PR #20 (`0a5e20f`); contrato HTTP P.4 aprovado pela DEC-074.
-- [ ] Implementar P.4: GET individual, guards S3.3/S3.4, somente composição P.3, DTO público de seis campos, validação de UUID, erros aprovados e testes HTTP/PostgreSQL. Endpoint ainda não implementado.
-- [ ] Resolver APIQ-012 a APIQ-019 antes de consolidar os contratos correspondentes: paginação, filtros, parâmetros desconhecidos, resumos, allowedActions, /me, campos desconhecidos e tipos gerados.
+- [x] P.4 implementada: GET individual, guards S3.3/S3.4 e P.3; PR #22 (`c9d6327`, commit `672d677`). Testes versionados, sem reexecução nesta etapa documental.
+- [x] [DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity): priorização limitada de SLICE-007, envelope data/pagination, seis campos, page=1/pageSize=20/máximo 100, ordenação createdAt DESC/id DESC, sem total, 200 vazio e sem ampliação D1.
+- [x] APIQ-012/014 decididas parcialmente somente para esta listagem; ambas permanecem OPEN para os demais endpoints.
+- [ ] Implementar a listagem mínima: parâmetros únicos/inteiros positivos e desconhecidos rejeitados; alcance antes de LIMIT/OFFSET; snapshot comum de grants/dados/hasNextPage; isolamento, erros e testes aprovados. Ainda não existe.
+- [ ] SLICE-006 permanece pendente; SLICE-007 ampliada, busca, filtros, status, allowedActions, summaries, Wizard e ROPA não estão concluídos.
+- [ ] Resolver o escopo remanescente de APIQ-012 a APIQ-019 antes dos contratos correspondentes, sem fechar filtros multivalor, resumos relacionados, allowedActions, /me, campos desconhecidos e tipos gerados.
 - [ ] Resolver APIQ-007, SECQ-005/007/008/009/010, VALQ-004 e INFRAQ-002 antes da futura implementação de uploads. Upload/storage não bloqueia a primeira entrega aprovada.
 - [ ] Aprovar estados loading/error/empty, mensagens e preservação dos dados do formulário.
 - [ ] Definir biblioteca de componentes, design, idiomas, suporte mobile e acessibilidade: FEQ-001/002/007/008/010/011/012 e UXQ-001/004/007.
