@@ -9,7 +9,7 @@ export async function verifyConcurrentMigrations(
   preparation: pg.Pool,
   migration: pg.Pool,
   name: string,
-  upgrading = false,
+  previousMigrationCount = 0,
 ) {
   const gate = await preparation.connect();
   const children: ReturnType<typeof spawn>[] = [];
@@ -59,10 +59,12 @@ export async function verifyConcurrentMigrations(
     left join pg_policy p on p.polrelid=c.oid
     where n.nspname='public' and c.relkind='r'
     order by c.relname,p.polname`;
-  let previousPolicies: unknown[] | null = null;
+  let previousPolicies: Array<{ relname: string }> | null = null;
   try {
-    if (upgrading)
-      previousPolicies = (await preparation.query(policyQuery)).rows;
+    if (previousMigrationCount > 0)
+      previousPolicies = (
+        await preparation.query<{ relname: string }>(policyQuery)
+      ).rows;
     await gate.query(
       "select pg_advisory_lock(hashtext('lgpd:structural-migrations'))",
     );
@@ -132,7 +134,7 @@ export async function verifyConcurrentMigrations(
     const empty = await gate.query(
       "select to_regclass('public.__drizzle_migrations') as journal,to_regclass('public.organizations') as organization",
     );
-    if (upgrading) {
+    if (previousMigrationCount > 0) {
       if (
         empty.rows[0]?.journal === null ||
         empty.rows[0]?.organization === null
@@ -141,9 +143,9 @@ export async function verifyConcurrentMigrations(
       const previous = await gate.query(
         'select count(*)::int as count from public.__drizzle_migrations',
       );
-      if (previous.rows[0]?.count !== 3)
+      if (previous.rows[0]?.count !== previousMigrationCount)
         throw new Error(
-          'Upgrade deve disputar exatamente três migrations anteriores.',
+          `Upgrade deve disputar exatamente ${previousMigrationCount} migrations anteriores.`,
         );
     } else if (
       empty.rows[0]?.journal !== null ||
@@ -162,7 +164,7 @@ export async function verifyConcurrentMigrations(
         );
     }
     const expectedTimes = [
-      1789754035408, 1789754043586, 1790249267053, 1792761082815,
+      1789754035408, 1789754043586, 1790249267053, 1792761082815, 1793187232060,
     ].map(String);
     // Assert the exact versioned migrations, without selecting or applying SQL ourselves.
     const files = readMigrationFiles({
@@ -174,20 +176,27 @@ export async function verifyConcurrentMigrations(
       'select created_at,hash from public.__drizzle_migrations order by created_at',
     );
     if (
-      entries.rows.length !== 4 ||
+      entries.rows.length !== 5 ||
       JSON.stringify(entries.rows.map((row) => row.created_at)) !==
         JSON.stringify(expectedTimes) ||
       JSON.stringify(entries.rows.map((row) => row.hash)) !==
         JSON.stringify(files.map((file) => file.hash))
     )
       throw new Error(
-        'Journal deve registrar exatamente as quatro migrations versionadas.',
+        'Journal deve registrar exatamente as cinco migrations versionadas.',
       );
+    const previousTableNames = new Set(
+      previousPolicies?.map((row) => row.relname),
+    );
     const policiesPreserved =
       previousPolicies === null
         ? null
         : JSON.stringify(previousPolicies) ===
-          JSON.stringify((await preparation.query(policyQuery)).rows);
+          JSON.stringify(
+            (
+              await preparation.query<{ relname: string }>(policyQuery)
+            ).rows.filter((row) => previousTableNames.has(row.relname)),
+          );
     if (policiesPreserved === false)
       throw new Error('Upgrade alterou RLS ou policies existentes.');
     return {

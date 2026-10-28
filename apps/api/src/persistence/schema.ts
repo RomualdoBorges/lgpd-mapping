@@ -173,3 +173,32 @@ export const roleAssignmentBusinessUnits = pgTable(
     ),
   ],
 ).enableRLS();
+
+export const processingActivities = pgTable(
+  'processing_activities',
+  {
+    id: id(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    businessUnitId: uuid('business_unit_id').notNull(),
+    name: text('name').notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    // Fixed whitespace code points; translate is a predicate only, never a stored-value transform.
+    check(
+      'processing_activities_name_not_blank',
+      sql`translate(${t.name}, U&'\\0009\\000A\\000B\\000C\\000D\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000', '') <> ''`,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.businessUnitId],
+      foreignColumns: [businessUnits.organizationId, businessUnits.id],
+      name: 'processing_activities_business_unit_tenant_fk',
+    }),
+    index('processing_activities_business_unit_idx').on(
+      t.organizationId,
+      t.businessUnitId,
+    ),
+  ],
+).enableRLS();

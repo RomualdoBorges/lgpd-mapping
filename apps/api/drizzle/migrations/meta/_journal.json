@@ -29,6 +29,13 @@
       "when": 1792761082815,
       "tag": "0003_role_read_privilege",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793187232060,
+      "tag": "0004_processing_activities",
+      "breakpoints": true
     }
   ]
 }

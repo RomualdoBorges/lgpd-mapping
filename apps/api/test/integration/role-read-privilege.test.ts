@@ -24,12 +24,14 @@ const migrationNames = [
   '0001_tenant_rls',
   '0002_auth_persistence',
   '0003_role_read_privilege',
+  '0004_processing_activities',
 ];
 const migrationTimes = [
   '1789754035408',
   '1789754043586',
   '1790249267053',
   '1792761082815',
+  '1793187232060',
 ];
 let fixture: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -242,7 +244,7 @@ describe('S3.5.2 — privilégio mínimo de Role', () => {
     }
   });
 
-  it('banco vazio recebe quatro migrations com ordem, timestamps e hashes exatos, sem duplicação', async () => {
+  it('banco vazio recebe cinco migrations com ordem, timestamps e hashes exatos, sem duplicação', async () => {
     const history = await fixture.migration.query(
       'select id,hash,created_at from public.__drizzle_migrations order by created_at',
     );
@@ -335,7 +337,7 @@ describe('S3.5.2 — privilégio mínimo de Role', () => {
     ).toEqual(await expectedHistory());
   });
 
-  it('atualiza histórico real 0000–0002 pelo runner concorrente sem mudar hashes anteriores ou RLS', async () => {
+  it('atualiza histórico real 0000–0002 com 0003 e posteriores pelo runner concorrente sem mudar hashes anteriores ou RLS', async () => {
     const folder = await mkdtemp(join(tmpdir(), 'lgpd-migrations-'));
     let upgraded: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
     let previous: unknown[] = [];

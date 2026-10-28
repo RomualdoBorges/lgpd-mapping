@@ -61,7 +61,7 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     );
     expect(fixture.concurrency.waitingExecutors).toBe(2);
     expect(fixture.concurrency.protectedExecutors).toBe(1);
-    expect(fixture.concurrency.journalEntries).toBe(4);
+    expect(fixture.concurrency.journalEntries).toBe(5);
   });
   it('falha após adquirir lock encerra sessão e permite outro migrator', async () => {
     const applicationName = `lgpd_failed_migration_${randomUUID()}`;
@@ -358,6 +358,7 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
         'roles',
         'external_identities',
         'sessions',
+        'processing_activities',
         '__drizzle_migrations',
       ].sort(),
     );
@@ -367,7 +368,7 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
           'select * from public.__drizzle_migrations',
         )
       ).rows,
-    ).toHaveLength(4);
+    ).toHaveLength(5);
   });
   it('User global possui dois Memberships independentes e não recebe organization_id/RLS', async () => {
     const user = await fixture.migration.query(
@@ -529,8 +530,8 @@ describe('PostgreSQL real: isolamento, integridade e ciclo de conexão', () => {
     }>(
       'select id,hash,created_at from public.__drizzle_migrations order by created_at',
     );
-    expect(entries.rows).toHaveLength(4);
-    expect(new Set(entries.rows.map((row) => row.created_at)).size).toBe(4);
+    expect(entries.rows).toHaveLength(5);
+    expect(new Set(entries.rows.map((row) => row.created_at)).size).toBe(5);
     for (const row of entries.rows) expect(row.hash).toMatch(/^[0-9a-f]{64}$/);
     const table = await fixture.migration.query(
       "select to_regclass('public.__drizzle_migrations') as journal, to_regclass('drizzle.__drizzle_migrations') as other_journal",

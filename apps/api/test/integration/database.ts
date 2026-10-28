@@ -27,6 +27,7 @@ type PreviousMigrationPreparation = (context: {
 
 export async function createTestDatabase(
   preparePreviousMigrations?: PreviousMigrationPreparation,
+  previousMigrationCount = 3,
 ) {
   const envPath = fileURLToPath(new URL('../../../../.env', import.meta.url));
   if (existsSync(envPath)) process.loadEnvFile(envPath);
@@ -159,7 +160,7 @@ export async function createTestDatabase(
         preparation,
         migration,
         name,
-        preparePreviousMigrations !== undefined,
+        preparePreviousMigrations ? previousMigrationCount : 0,
       );
       await migrationCheckCoordinator.query(
         "select pg_advisory_unlock(hashtext('lgpd:test-migration-concurrency-check'))",
@@ -218,7 +219,7 @@ export async function createTestDatabase(
         );
         assertExclusiveTestDatabase(actual.rows[0]?.name ?? '', name, marker);
         await migration.query(
-          'TRUNCATE sessions, external_identities, role_assignment_business_units, role_assignments, memberships, business_units, organizations, users, roles',
+          'TRUNCATE processing_activities, sessions, external_identities, role_assignment_business_units, role_assignments, memberships, business_units, organizations, users, roles',
         );
         await migration.query(
           'insert into users (id,name,email) values ($1,$2,$3)',
