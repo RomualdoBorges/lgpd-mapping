@@ -30,3 +30,20 @@ export const activityInternalErrorResponse = {
     message: 'Ocorreu um erro inesperado.',
   },
 } as const;
+
+export type ProcessingActivityListResponse = Readonly<{
+  data: readonly ProcessingActivityReadResponse['data'][];
+  pagination: Readonly<{
+    page: number;
+    pageSize: number;
+    hasNextPage: boolean;
+  }>;
+}>;
+
+export const invalidActivityPaginationResponse = {
+  error: {
+    code: 'VALIDATION_ERROR',
+    message: 'Falha na validação da requisição',
+    details: [{ field: 'query', code: 'INVALID_PAGINATION' }],
+  },
+} as const;
