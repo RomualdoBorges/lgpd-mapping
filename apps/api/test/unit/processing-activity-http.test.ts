@@ -36,9 +36,12 @@ describe('P.4 — controller', () => {
       grants: ['private'],
       status: 'private',
     });
-    const result = await new ProcessingActivityController({
-      findById,
-    }).findById(context, ID);
+    const result = await new ProcessingActivityController(
+      {
+        findById,
+      },
+      { list: vi.fn() },
+    ).findById(context, ID);
     expect(findById).toHaveBeenCalledExactlyOnceWith(context, ID);
     expect(findById.mock.calls[0]?.[0]).toBe(context);
     expect(result).toEqual({ data: summary });
@@ -53,9 +56,12 @@ describe('P.4 — controller', () => {
     ]);
   });
   it('null produz 404 uniforme', async () => {
-    const controller = new ProcessingActivityController({
-      findById: vi.fn().mockResolvedValue(null),
-    });
+    const controller = new ProcessingActivityController(
+      {
+        findById: vi.fn().mockResolvedValue(null),
+      },
+      { list: vi.fn() },
+    );
     const error = await controller
       .findById(context, ID)
       .catch((e: unknown) => e);
@@ -65,9 +71,12 @@ describe('P.4 — controller', () => {
   });
   it('propaga erro técnico sem convertê-lo em 404', async () => {
     const error = new Error('falha SQL privada');
-    const controller = new ProcessingActivityController({
-      findById: vi.fn().mockRejectedValue(error),
-    });
+    const controller = new ProcessingActivityController(
+      {
+        findById: vi.fn().mockRejectedValue(error),
+      },
+      { list: vi.fn() },
+    );
     await expect(controller.findById(context, ID)).rejects.toBe(error);
   });
 });

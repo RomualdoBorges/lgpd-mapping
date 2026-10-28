@@ -1,3 +1,4 @@
+import { ProcessingActivityListService } from './processing-activities/processing-activity-list.service.js';
 import { Module } from '@nestjs/common';
 import { ProcessingActivityController } from './processing-activities/processing-activity.controller.js';
 import { ProcessingActivityReadService } from './processing-activities/processing-activity-read.service.js';
@@ -20,6 +21,12 @@ import { MembershipGrantsService } from './authorization/membership-grants.servi
     TenantContextService,
     TenantContextGuard,
     MembershipGrantsService,
+    {
+      provide: ProcessingActivityListService,
+      inject: [DatabaseService],
+      useFactory: (database: DatabaseService) =>
+        new ProcessingActivityListService(database),
+    },
     {
       provide: ProcessingActivityReadService,
       inject: [DatabaseService],
