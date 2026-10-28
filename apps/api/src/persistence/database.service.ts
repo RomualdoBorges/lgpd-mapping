@@ -8,7 +8,11 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from './schema.js';
-import { withTenant, type TenantTransaction } from './tenant-transaction.js';
+import {
+  withTenant,
+  validateTenantId,
+  type TenantTransaction,
+} from './tenant-transaction.js';
 import { ENVIRONMENT, type Environment } from '../config/environment.js';
 import {
   findSessionByTokenDigest,
@@ -39,6 +43,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       this.database,
       context.authorizedOrganizationId,
       operation,
+    );
+  }
+  withAuthorizedTenantReadSnapshot<T>(
+    context: AuthorizedTenantContext,
+    operation: (transaction: TenantTransaction) => Promise<T>,
+  ): Promise<T> {
+    const organizationId = context.authorizedOrganizationId;
+    validateTenantId(organizationId);
+    return this.database.transaction(
+      async (transaction) => {
+        await transaction.execute(
+          sql`select set_config('lgpd.organization_id', ${organizationId}, true)`,
+        );
+        return operation(transaction);
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
     );
   }
   resolveSessionByTokenDigest(
