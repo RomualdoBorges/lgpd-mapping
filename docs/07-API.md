@@ -263,6 +263,8 @@ Quando `organizationId` fizer parte de um payload por necessidade funcional, o b
 
 # 10. Formato padrão de resposta
 
+Para a leitura individual de ProcessingActivity, [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data`. APIQ-011 está DECIDED neste recorte; exemplos de outros recursos não constituem decisão geral. P.4 ainda não está implementada.
+
 Para recurso único:
 
 ```json
@@ -691,37 +693,41 @@ permissions
 
 # 28. Consultar atividade
 
+**P.4: contrato APPROVED; endpoint ainda não implementado.** [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) autoriza somente:
+
 ```http
 GET /api/v1/processing-activities/:id
 ```
 
-Deve retornar a representação necessária para visualização/edição.
-
-Exemplo conceitual:
+GET /api/v1/processing-activities/:id usa envelope `data`, contendo somente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`. UUIDs são strings; datas são strings ISO 8601 UTC, preservando a precisão produzida pela consulta interna. Nenhum campo de workflow, versões, participantes ou ROPA integra esse DTO.
 
 ```json
 {
   "data": {
-    "id": "uuid",
-    "name": "Cadastro de currículos",
-    "status": "MAPPING",
-    "complianceStatus": "PENDING",
-    "businessUnit": {
-      "id": "uuid",
-      "name": "RH"
-    },
-    "purposes": [],
-    "dataCategories": [],
-    "subjects": [],
-    "collectionSources": [],
-    "operations": [],
-    "recipients": [],
-    "retentionPolicy": null,
-    "securityMeasures": [],
-    "legalBases": []
+    "id": "UUID",
+    "organizationId": "UUID",
+    "businessUnitId": "UUID",
+    "name": "string",
+    "createdAt": "ISO UTC",
+    "updatedAt": "ISO UTC"
   }
 }
 ```
+
+Requer cookie de sessão válido e `X-Organization-Id`, com guards S3.3/S3.4 em ordem. O contexto autorizado vem exclusivamente do bootstrap; P.3 é a única composição D1. Não aceitar IDs de Membership, grants ou reach do cliente. UUID inválido retorna 400 antes da P.3, após os guards.
+
+| Condição | Status e contrato |
+|---|---|
+| Session ausente, inválida, expirada ou revogada | 401 / `AUTHENTICATION_REQUIRED`, preservando S3.3 |
+| Header `X-Organization-Id` ausente | 400 / `ORGANIZATION_CONTEXT_REQUIRED` |
+| Header inválido ou com múltiplos valores | 400 / `INVALID_ORGANIZATION_CONTEXT` |
+| UUID de Activity inválido, após os guards | 400 / `VALIDATION_ERROR`, detalhe `INVALID_UUID` para `id` |
+| Organization não autorizada no bootstrap, inclusive Membership ausente/inativa | 403 / `ORGANIZATION_ACCESS_DENIED` |
+| Activity inexistente, cross-tenant ou fora da visibilidade D1 | 404 / `PROCESSING_ACTIVITY_NOT_FOUND`, mensagem `Atividade de tratamento não encontrada.` |
+| Activity autorizada | 200 com o DTO aprovado |
+| Falha inesperada, contratual interna ou de persistência | 500 / `INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem detalhes técnicos |
+
+Todo `null` da P.3 recebe o mesmo 404; nenhuma consulta privilegiada distingue inexistência de invisibilidade. Os demais campos conceituais de mapeamento/edição dependem de entregas futuras e não integram esta resposta. Não autoriza escrita ou listagem.
 
 ---
 
@@ -2073,7 +2079,7 @@ Enquanto:
 GET /processing-activities/:id
 ```
 
-retorna informações detalhadas.
+retorna informações detalhadas. Em P.4, o detalhe público limita-se aos seis campos em `data` aprovados pela DEC-074; este exemplo não autoriza os demais dados de mapeamento.
 
 ---
 

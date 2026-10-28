@@ -4775,15 +4775,19 @@ Registros incorporados em 2026-09-18. OPEN é preservação/triagem de questão 
 
 ## APIQ-011 — Single-resource response direto ou envelope `data`?
 
-**Status:** OPEN  
+**Status:** DECIDED
 **Priority:** LOW  
 **Affected Documents:** [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md)  
 **Affected Delivery:** API / contratos / frontend  
-**Blocks:** implementar a decisão «Single-resource response direto ou envelope `data`?» descrita em Question, quando incluído na entrega; não bloqueia automaticamente a fundação técnica
+**Blocks:** nenhum bloqueio pendente para o formato da resposta individual de ProcessingActivity; aplicar DEC-074. Esta decisão não aprova formatos de outros recursos ou coleções.
 
 ### Question
 
 Single-resource response direto ou envelope `data`?
+
+### Decision
+
+[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) APPROVED em 2026-10-28: adotar envelope `data` para `GET /api/v1/processing-activities/:id`, com somente os seis campos públicos aprovados. P.4 aprovada para implementação, ainda não implementada. O recorte não resolve paginação, filtros, allowedActions, /me, workflow, versões ou ROPA; todas as demais Questions preservam seus estados.
 
 ---
 

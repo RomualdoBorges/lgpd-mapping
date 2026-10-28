@@ -5,16 +5,15 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
-## ProcessingActivity — próximos recortes após DEC-073
+## ProcessingActivity — estado entregue e próximo recorte P.4
 
-[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) APPROVED em 2026-10-28: modelo estrutural mínimo e primeira leitura interna segura aprovados; implementação ainda pendente e dependente de autorização específica.
+P.1 implementou persistência estrutural, migration 0004, constraints tenant-bound, RLS/FORCE RLS e leitura mínima. P.2 implementou repository por UUID com Organization e alcance D1. P.3 implementou composição de Membership ativa, grants e Activity no mesmo snapshot READ ONLY / REPEATABLE READ. P.3 foi integrada pela PR #20, merge `0a5e20f`, commits `9aa9be4` e `991854a`. As DEC-070/072/073 permanecem inalteradas.
 
-1. Persistência dos seis campos aprovados, migration incremental, FK tenant-bound, RLS/FORCE RLS, leitura mínima do runtime e testes PostgreSQL de integridade/privilégios.
-2. Repository por UUID limitado à Organization e à área responsável conforme alcance D1; somente os seis campos de retorno; ausência/falta de visibilidade indistinguíveis; erros propagados.
-3. Composição de grants e Activity em snapshot coerente na mesma transação tenant-bound REPEATABLE READ; descriptor persistido e verificação antes de liberar dados. Não reutilizar resolução concluída em transação independente como snapshot compartilhado.
-4. Auditoria dos dez critérios da decisão e reconciliação documental com evidências reais após entrega.
+[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) APPROVED em 2026-10-28 aprova P.4 para implementação; o endpoint ainda não existe. APIQ-011 DECIDED: envelope `data` para o resumo individual de seis campos em `GET /api/v1/processing-activities/:id`.
 
-Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. PAQ-003 e questões de versões/workflow permanecem abertas. Não iniciar repository/composição antes de aprovar o recorte técnico correspondente; esta etapa registra somente documentação.
+Próximo recorte: controller fino com guards S3.3/S3.4, provider para P.3 sem alterar sua implementação, validação HTTP de UUID, resposta limitada ao DTO aprovado e tradução de erros conforme DEC-074. Implementar testes unitários e HTTP/PostgreSQL reais, preservando os testes transacionais P.3. Não declarar testes P.4 executados nesta formalização.
+
+Não autoriza escrita, listagem, workflow, versões, participantes, ROPA ou frontend; não altera schema, migrations ou matriz D1. PAQ-003 e demais questões de workflow/versionamento continuam abertas.
 
 ## AUTH-F.1 — plano proposto de política de leitura D1
 

@@ -514,85 +514,51 @@ DELETE
 
 # 23. Success Response — Single Resource
 
-Por padrão, recurso pode ser retornado diretamente:
+[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) aprova envelope `data` exclusivamente para a leitura individual de ProcessingActivity. Contrato P.4 aprovado para implementação, ainda não implementado:
+
+```http
+GET /api/v1/processing-activities/:id
+```
 
 ```json
 {
-  "id": "...",
-  "name": "Payroll",
-  "status": "DRAFT",
-  "createdAt": "...",
-  "updatedAt": "..."
+  "data": {
+    "id": "UUID",
+    "organizationId": "UUID",
+    "businessUnitId": "UUID",
+    "name": "string",
+    "createdAt": "ISO UTC",
+    "updatedAt": "ISO UTC"
+  }
 }
 ```
 
-Evitar envelopes diferentes por módulo sem necessidade.
-
----
+GET /api/v1/processing-activities/:id usa envelope `data`, contendo somente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`. UUIDs são strings; datas são strings ISO 8601 UTC, preservando a precisão produzida pela consulta interna. Nenhum campo de workflow, versões, participantes ou ROPA integra esse DTO.
 
 # 24. Envelope de recurso
 
-Não alternar arbitrariamente entre:
+APIQ-011 está DECIDED para este recorte. Não alternar a resposta P.4 entre objeto direto, `activity` e `data`. Formatos de outros recursos e coleções não são aprovados por esta decisão.
 
-```json
-{
-  "activity": {}
-}
-```
+# 25. Decisão aprovada — P.4
 
-e:
+A proposta anterior de `resource directly` não se aplica a P.4; prevalece [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity). Exigir guards S3.3/S3.4 e chamar somente P.3 com o contexto interno e o UUID validado. Não aceitar grants, alcance ou Membership do consumidor.
 
-```json
-{
-  "data": {}
-}
-```
+| Condição | Status e contrato |
+|---|---|
+| Session ausente, inválida, expirada ou revogada | 401 / `AUTHENTICATION_REQUIRED`, preservando S3.3 |
+| Header `X-Organization-Id` ausente | 400 / `ORGANIZATION_CONTEXT_REQUIRED` |
+| Header inválido ou com múltiplos valores | 400 / `INVALID_ORGANIZATION_CONTEXT` |
+| UUID de Activity inválido, após os guards | 400 / `VALIDATION_ERROR`, detalhe `INVALID_UUID` para `id` |
+| Organization não autorizada no bootstrap, inclusive Membership ausente/inativa | 403 / `ORGANIZATION_ACCESS_DENIED` |
+| Activity inexistente, cross-tenant ou fora da visibilidade D1 | 404 / `PROCESSING_ACTIVITY_NOT_FOUND`, mensagem `Atividade de tratamento não encontrada.` |
+| Activity autorizada | 200 com o DTO aprovado |
+| Falha inesperada, contratual interna ou de persistência | 500 / `INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem detalhes técnicos |
 
-e:
+Não converter erro contratual/persistência em 404. O resultado `null` da P.3 sempre produz o mesmo 404, sem lookup adicional. DEC-066 permanece inalterada.
 
-```json
-{}
-```
+# 26. Rastreabilidade de APIQ-011
 
-Definir um padrão consistente.
-
----
-
-# 25. Decisão proposta
-
-Para recursos únicos:
-
-```text
-resource directly
-```
-
-Para coleções:
-
-```text
-items + pagination
-```
-
----
-
-# 26. Nova Open Question
-
-Adicionar:
-
-```text
-APIQ-011
-```
-
-**Question:**
-
-```text
-Responses de recurso único serão retornadas diretamente ou dentro de envelope `data`?
-```
-
-**Priority:**
-
-```text
-LOW
-```
+[APIQ-011](12-OPEN-QUESTIONS.md#apiq-011--single-resource-response-direto-ou-envelope-data) → [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity), APPROVED em 2026-10-28. O contrato público não significa endpoint entregue. Propostas de coleção abaixo continuam propostas independentes.
 
 ---
 
@@ -3106,7 +3072,7 @@ unknown write fields accepted through mass assignment
 
 # 166. Open Questions adicionadas
 
-Adicionar a:
+Registro histórico: APIQ-011 foi decidida para ProcessingActivity pela DEC-074; as demais questões abaixo preservam seus estados no registro canônico. Não adicionar novamente APIQ-011. Referência:
 
 ```text
 docs/12-OPEN-QUESTIONS.md

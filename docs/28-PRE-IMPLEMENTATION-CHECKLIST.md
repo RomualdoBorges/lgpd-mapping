@@ -101,7 +101,10 @@ Systems e Suppliers estão fora da primeira entrega. Os itens abaixo permanecem 
 - [ ] Fechar contrato da primeira entrega: endpoints, DTOs permitidos, responses, enums, datas, paginação, filtros, erros e OpenAPI.
 - [ ] Resolver APIQ-003/004/005 e ERRQ-001: PATCH, concorrência, idempotência e repetição de operações. Aplicar DEC-063 para a separação já decidida entre 400 e 422.
 - [x] ERRQ-002/003/004 decididas pelas DEC-063/064/066: separação 400/422, mensagens públicas em português com códigos estáveis e política 403/404 contra enumeração de recursos tenant-bound.
-- [ ] Resolver APIQ-011 a APIQ-019 antes de consolidar os contratos correspondentes: envelopes, paginação, filtros, parâmetros desconhecidos, resumos, allowedActions, /me, campos desconhecidos e tipos gerados.
+- [x] APIQ-011 DECIDED → [DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity): envelope `data` aprovado para a resposta individual de ProcessingActivity; não aprova outros recursos ou coleções.
+- [x] P.1/P.2/P.3 implementadas e P.3 integrada pela PR #20 (`0a5e20f`); contrato HTTP P.4 aprovado pela DEC-074.
+- [ ] Implementar P.4: GET individual, guards S3.3/S3.4, somente composição P.3, DTO público de seis campos, validação de UUID, erros aprovados e testes HTTP/PostgreSQL. Endpoint ainda não implementado.
+- [ ] Resolver APIQ-012 a APIQ-019 antes de consolidar os contratos correspondentes: paginação, filtros, parâmetros desconhecidos, resumos, allowedActions, /me, campos desconhecidos e tipos gerados.
 - [ ] Resolver APIQ-007, SECQ-005/007/008/009/010, VALQ-004 e INFRAQ-002 antes da futura implementação de uploads. Upload/storage não bloqueia a primeira entrega aprovada.
 - [ ] Aprovar estados loading/error/empty, mensagens e preservação dos dados do formulário.
 - [ ] Definir biblioteca de componentes, design, idiomas, suporte mobile e acessibilidade: FEQ-001/002/007/008/010/011/012 e UXQ-001/004/007.
