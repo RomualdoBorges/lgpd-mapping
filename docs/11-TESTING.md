@@ -8,6 +8,12 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## ProcessingActivity — testes futuros da persistência mínima e leitura D1
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) registra dez critérios canônicos ainda não executados. A futura implementação deve testar campos obrigatórios/nome não vazio e ausência de unicidade; FK composta cross-tenant; RLS/FORCE RLS e runtime somente leitura; Organization/área responsável/alcance vazio; ausência indistinguível para UUID inexistente, cross-tenant ou fora da visibilidade; retorno limitado aos seis campos aprovados e liberação somente após autorização.
+
+Testes PostgreSQL reais devem comprovar grants e Activity no mesmo snapshot REPEATABLE READ sob alterações concorrentes, propagação de falhas sem ausência artificial e limpeza de tenant no pool. Não considerar duas transações como snapshot compartilhado. Regressões S3.4/S3.5/D1 permanecem obrigatórias quando pertinentes. Não há execução de testes ou entrega de persistência nesta formalização; não testar workflow/versões/ROPA como se aprovados.
+
 ## AUTH-F.1 — política de leitura D1 aprovada, implementação pendente
 
 AUTHQ-016 está DECIDED e a [DEC-072](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1) está APPROVED em 2026-10-23. Aprova somente `processing_activity:read` e `ropa:read`: COLLABORATOR/BUSINESS_UNIT lê Activities das áreas explícitas, MANAGER/BUSINESS_UNIT lê Activities/ROPA dessas áreas e DPO/ORGANIZATION lê ambos na Organization autorizada. Demais combinações não concedem leitura D1 nesta política. Não promover scope, herdar áreas ou emprestar áreas entre assignments.

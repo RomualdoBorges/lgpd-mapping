@@ -8,6 +8,12 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## ProcessingActivity — identidade estrutural mínima aprovada
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1), aprovada em 2026-10-28, define o primeiro recorte ainda não implementado: `id`, `organization_id`, `business_unit_id`, `name`, `created_at` e `updated_at`, todos obrigatórios. IDs UUID; nome TEXT não vazio, inclusive não composto somente por espaços, sem unicidade ou limite máximo adicional; datas TIMESTAMPTZ. Cada Activity pertence a uma Organization e possui uma área responsável dessa mesma Organization.
+
+Neste recorte `business_unit_id` representa exclusivamente a área responsável e determina a visibilidade BUSINESS_UNIT da DEC-072. Não existem participantes ou hierarquia implícita no recorte; PAQ-003 permanece OPEN. A posição atual de nome/área na identidade não define sua relação definitiva com versões. Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As descrições amplas posteriores são modelo conceitual futuro, não campos autorizados para a primeira persistência.
+
 ## Modelo de Identity/Tenant aprovado — 2026-09-18
 
 As decisões DEC-034 a DEC-043 aprovam o seguinte modelo conceitual (detalhes físicos ainda dependem das questões de banco):

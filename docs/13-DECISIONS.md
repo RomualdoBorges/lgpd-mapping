@@ -3990,6 +3990,104 @@ AUTHQ-016 está DECIDED pela aprovação humana desta política. A implementaç�
 
 ---
 
+# DEC-073 — ProcessingActivity: persistência mínima e leitura D1
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-28
+
+## Related Questions
+
+Relacionada a PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002, sem alterar seus estados. A aprovação humana delimita um primeiro recorte; não encerra essas questões. Preserva DEC-039/045/046/066/070/072.
+
+## Context
+
+Formalização expressamente autorizada do primeiro modelo persistente estrutural de ProcessingActivity e dos requisitos da primeira leitura interna segura. A persistência e a consulta ainda não foram implementadas. Esta etapa autoriza somente documentação; código, SQL e migrations exigem autorização posterior.
+
+## Decision
+
+### Identidade persistente mínima
+
+Adotar inicialmente somente os seguintes campos:
+
+| Campo físico | Tipo e obrigatoriedade | Significado |
+|---|---|---|
+| `id` | UUID obrigatório, chave primária | Identidade da Activity |
+| `organization_id` | UUID obrigatório | Organization da Activity |
+| `business_unit_id` | UUID obrigatório | Exclusivamente a área responsável |
+| `name` | TEXT obrigatório e não vazio | Identificação textual; somente espaços não satisfazem conteúdo não vazio |
+| `created_at` | TIMESTAMPTZ obrigatório | Data de criação do registro |
+| `updated_at` | TIMESTAMPTZ obrigatório | Data de atualização do registro |
+
+Não impor unicidade de nome nem limite máximo adicional de nome. VALQ-002 permanece OPEN para limites futuros; esta decisão aprova somente a exigência de conteúdo não vazio. Não incluir outros campos neste recorte. Timestamps não substituem histórico ou auditoria.
+
+A área responsável deve pertencer à mesma Organization da Activity. No primeiro recorte, não existe Activity sem área responsável. A localização atual de `name` e `business_unit_id` na identidade estrutural não decide sua relação definitiva com versões futuras.
+
+### Visibilidade D1
+
+Aplicar o alcance calculado para `processing_activity:read`, conforme DEC-072, considerando exclusivamente a área responsável persistida:
+
+- ORGANIZATION permite consultar Activities da Organization autorizada.
+- BUSINESS_UNIT permite consultar somente Activities cuja área responsável esteja explicitamente no alcance.
+- BUSINESS_UNIT vazio não concede leitura.
+- Não introduzir hierarquia implícita ou áreas participantes, nem ampliar a matriz funcional da DEC-072.
+
+PAQ-003 permanece OPEN: não se decide existência futura de participantes nem visibilidade por participantes ou semântica any/all. Não reconfigurar os grants estruturais da DEC-070.
+
+### Primeira consulta interna e não enumeração
+
+A primeira consulta interna poderá retornar somente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`. Não representa versão vigente, draft, publicação ou conclusão de mapeamento/compliance; não aprova DTO, endpoint ou novo contrato HTTP.
+
+Ausência de recurso e ausência de visibilidade devem produzir resultado interno indistinguível. Organization e área do descriptor devem vir da persistência, nunca de body/query como autoridade. Conhecer UUID não concede visibilidade; não fazer lookup global para revelar a diferença entre inexistência, cross-tenant e fora do alcance. Não liberar dados da Activity antes da autorização. DEC-066 permanece aplicável à futura tradução HTTP, sem novos códigos ou definição de 403/404 nesta entrega.
+
+Erros contratuais e de persistência continuam sendo erros, sem conversão para ausência legítima, negação silenciosa ou alcance vazio.
+
+### Consistência e transação
+
+A futura leitura integrada deve obter grants e Activity em snapshot coerente, em uma mesma transação tenant-bound com isolamento REPEATABLE READ e contexto de Organization local à transação. Filtros explícitos de Organization/Membership continuam obrigatórios na leitura de grants; a consulta da Activity aplica Organization e visibilidade D1.
+
+A resolução D1.1/S3.5 existente não passa a compartilhar snapshot com uma consulta posterior em outra transação. A futura composição deverá garantir a fronteira transacional aprovada, sem modificar silenciosamente o comportamento dos serviços existentes. Mudanças confirmadas antes do snapshot são observadas; não se promete revogação contínua ou cancelamento de operação já em andamento.
+
+### Integridade, RLS e privilégios
+
+A futura tabela deve possuir FK para Organization, FK composta para BusinessUnit envolvendo Organization, constraints de obrigatoriedade e conteúdo não vazio de nome, RLS habilitado e forçado. RLS isola Organization e não substitui permission/scope ou filtros funcionais. Reutilizar o contexto local à transação e impedir resíduo de tenant no pool.
+
+Conceder somente os privilégios mínimos de leitura necessários ao runtime, sem escrita ou administração por esta decisão. Runtime sem BYPASSRLS e sem ownership, preservando as restrições da DEC-046. Usar migration incremental versionada, sem editar migrations anteriores. Esta formalização não concede privilégios nem executa SQL.
+
+### Limites e questões preservadas
+
+Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend.
+
+Não definir modelo de ActivityVersion, relação definitiva dos campos estruturais com versões, estados ou transições. Não transformar o resumo estrutural em versão publicada. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. Nenhuma outra Question ou Decision tem estado alterado.
+
+## Rationale
+
+Criar a futura origem persistente confiável de identificação e área responsável para a leitura D1, sem antecipar os modelos completos de mapeamento, workflow, versões ou ROPA.
+
+## Consequences
+
+Próximos recortes sujeitos a autorização: persistência estrutural/migration/RLS e testes PostgreSQL; depois repository de leitura e composição transacional. A aprovação normativa não significa funcionalidade implementada ou testes executados. A decisão não aprova mutations por usuários.
+
+## Validation — critérios aprovados para implementação futura
+
+1. Persistir somente os seis campos mínimos, com UUIDs e timestamps obrigatórios; rejeitar nome vazio ou composto somente por espaços, sem unicidade ou limite máximo adicional.
+2. Rejeitar Activity sem área e associação de BusinessUnit de outra Organization, inclusive por SQL direto.
+3. Comprovar ENABLE/FORCE RLS, ausência de leitura sem tenant e isolamento entre Organizations com runtime restrito.
+4. Comprovar privilégios mínimos de leitura e ausência de escrita, BYPASSRLS ou ownership do runtime.
+5. ORGANIZATION lê somente a própria Organization; BUSINESS_UNIT lê somente pela área responsável explícita, sem hierarquia ou participantes; conjunto vazio não libera Activity.
+6. UUID conhecido não permite ler recurso cross-tenant ou fora da visibilidade; ausência e falta de visibilidade têm resultado interno indistinguível.
+7. Retornar somente os seis campos aprovados, obtidos da persistência, sem liberar conteúdo antes da autorização.
+8. Ler grants e Activity na mesma transação tenant-bound REPEATABLE READ, com snapshot coerente comprovado sob alteração concorrente; não confundir transações independentes com snapshot comum.
+9. Propagar falhas contratuais, SQL e transacionais sem ausência/negação/alcance vazio artificiais; preservar limpeza do contexto no pool após sucesso ou erro.
+10. Preservar contratos S3.4/S3.5/D1 e DEC-066/070/072; não introduzir status, versões, publicação, owner obrigatório, ROPA, endpoints ou frontend, nem encerrar questões pendentes.
+
+São requisitos futuros, não evidências de testes executados.
+
+## Affected Documents
+
+02-DOMAIN.md, 03-DATABASE.md, 04-AUTHORIZATION.md, 11-TESTING.md, 12-OPEN-QUESTIONS.md, 13-DECISIONS.md, 14-IMPLEMENTATION-PLAN.md e features/PROCESSING-ACTIVITY.md.
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -4066,6 +4164,7 @@ AUTHQ-016 está DECIDED pela aprovação humana desta política. A implementaç�
 | DEC-070 | S3.5 — resolução estrutural de concessões do Membership autorizado |
 | DEC-071 | Escolhas técnicas e escopo do primeiro frontend shell |
 | DEC-072 | APPROVED — AUTH-F.1: política funcional mínima de leitura D1 |
+| DEC-073 | APPROVED — ProcessingActivity: persistência mínima e leitura D1 |
 
 ---
 
