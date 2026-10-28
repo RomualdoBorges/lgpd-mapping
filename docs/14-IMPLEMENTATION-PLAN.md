@@ -5,15 +5,17 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
-## ProcessingActivity — estado entregue e próximo recorte P.4
+## ProcessingActivity — P.1–P.4 entregues; listagem mínima priorizada
 
-P.1 implementou persistência estrutural, migration 0004, constraints tenant-bound, RLS/FORCE RLS e leitura mínima. P.2 implementou repository por UUID com Organization e alcance D1. P.3 implementou composição de Membership ativa, grants e Activity no mesmo snapshot READ ONLY / REPEATABLE READ. P.3 foi integrada pela PR #20, merge `0a5e20f`, commits `9aa9be4` e `991854a`. As DEC-070/072/073 permanecem inalteradas.
+P.1 implementou persistência estrutural/migration 0004, constraints tenant-bound e RLS/FORCE RLS. P.2 implementou repository individual com alcance D1. P.3 implementou composição READ ONLY / REPEATABLE READ, integrada pela PR #20 (`0a5e20f`, commits `9aa9be4` e `991854a`). P.4 implementou GET individual e contrato DEC-074, integrada pela PR #22 (`c9d6327`, commit `672d677`). Nenhuma dessas implementações é alterada nesta formalização.
 
-[DEC-074](13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) APPROVED em 2026-10-28 aprova P.4 para implementação; o endpoint ainda não existe. APIQ-011 DECIDED: envelope `data` para o resumo individual de seis campos em `GET /api/v1/processing-activities/:id`.
+[DEC-075](13-DECISIONS.md#dec-075--slice-007-listagem-estrutural-mínima-de-processingactivity) APPROVED em 2026-10-28 antecipa exclusivamente a listagem estrutural mínima de SLICE-007 antes de SLICE-006. A ordem recomendada da seção 160 é preservada como histórico geral; esta é a exceção de priorização humana, sem renumeração. SLICE-006 continua pendente; SLICE-007 ampliada não está concluída.
 
-Próximo recorte: controller fino com guards S3.3/S3.4, provider para P.3 sem alterar sua implementação, validação HTTP de UUID, resposta limitada ao DTO aprovado e tradução de erros conforme DEC-074. Implementar testes unitários e HTTP/PostgreSQL reais, preservando os testes transacionais P.3. Não declarar testes P.4 executados nesta formalização.
+Próximo recorte aprovado para implementação, ainda não implementado: GET `/api/v1/processing-activities`, guards S3.3/S3.4, permission `processing_activity:read` sem ampliar matriz D1, itens com seis campos, envelope `data`/`pagination`, page=1, pageSize=20 (máximo 100), validação estrita de inteiros positivos/parâmetros únicos e rejeição de desconhecidos. Ordem fixa createdAt DESC, id DESC; sem total, filtros ou busca. Vazio/sem alcance no tenant autorizado: 200 com hasNextPage=false.
 
-Não autoriza escrita, listagem, workflow, versões, participantes, ROPA ou frontend; não altera schema, migrations ou matriz D1. PAQ-003 e demais questões de workflow/versionamento continuam abertas.
+Aplicar tenant e alcance antes de LIMIT/OFFSET e obter grants/dados/hasNextPage no mesmo snapshot tenant-bound. Planejar testes unitários e HTTP/PostgreSQL de paginação, ordenação, isolamento, ausência de vazamento por hasNextPage e consistência concorrente; preservar regressões P.1–P.4. Os testes desse novo recorte não foram executados nem implementados nesta etapa.
+
+Não autoriza criação, edição, exclusão, workflow, versões, participantes, Wizard, ROPA, exportação ou frontend. As questões correspondentes permanecem abertas. Reconciliar o estado de entrega não significa concluir Phase 2, SLICE-006 ou SLICE-007 ampliada.
 
 ## AUTH-F.1 — plano proposto de política de leitura D1
 
@@ -973,6 +975,8 @@ Activity DRAFT pode permanecer incompleta.
 ---
 
 # 43. Activity list
+
+DEC-075 aprova apenas o subconjunto mínimo de SLICE-007, ainda não implementado, antecipado por decisão humana. Busca, status, filtros e ordenação configurável abaixo continuam propostas futuras; não pertencem ao recorte aprovado.
 
 Implementar:
 
@@ -3093,6 +3097,8 @@ monitoring
 ---
 
 # 160. Primeiros slices recomendados
+
+Exceção de priorização aprovada pela DEC-075: implementar primeiro apenas a listagem estrutural mínima de SLICE-007; SLICE-006 permanece pendente e nenhum ID é renumerado. A sequência geral abaixo é preservada; SLICE-007 ampliada não está concluída.
 
 Após Foundation:
 

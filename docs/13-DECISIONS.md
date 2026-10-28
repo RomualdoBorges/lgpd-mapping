@@ -4165,6 +4165,104 @@ A futura implementação deve comprovar ordem dos guards; origem interna do cont
 
 ---
 
+# DEC-075 — SLICE-007: listagem estrutural mínima de ProcessingActivity
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-28
+
+## Related Questions
+
+APIQ-012 e APIQ-014 têm decisão parcial aprovada exclusivamente para este endpoint; permanecem OPEN para os demais contratos. APIQ-011 permanece DECIDED no recorte individual da DEC-074. Preserva DEC-039/045/046/063/064/065/066/070/072/073/074 e todas as decisões anteriores.
+
+## Context
+
+P.1–P.4 estão implementadas. P.4 foi integrada pela PR #22, merge `c9d6327`, commit `672d677`. As DEC-073/074 aprovaram persistência/leitura individual e não autorizavam listagem. Esta nova aprovação humana autoriza exclusivamente a antecipação de um recorte estrutural mínimo de SLICE-007 antes de SLICE-006, sem renumerar o roadmap ou considerar criação concluída.
+
+## Decision
+
+### Priorização e estado de entrega
+
+Priorizar a listagem mínima de SLICE-007. SLICE-006 continua pendente e não recebe autorização de implementação. SLICE-007 ampliada, com busca/filtros e demais funcionalidades propostas, não está concluída. A listagem mínima está aprovada para implementação, mas ainda não existe. Esta etapa modifica somente documentação.
+
+### Contrato HTTP
+
+Autorizar exclusivamente `GET /api/v1/processing-activities`. Executar `SessionAuthenticationGuard` e depois `TenantContextGuard`; obter `AuthorizedTenantContext` exclusivamente da S3.4. Não aceitar grants ou reach fornecidos pelo cliente e não ampliar a matriz D1.
+
+Responder 200 com envelope `data` e `pagination`. Cada item contém exatamente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`, os seis campos da DEC-073; UUIDs são strings e timestamps são ISO 8601 UTC, preservando o conteúdo produzido pela consulta. Nenhum summary relacionado ou campo adicional integra os itens.
+
+```json
+{
+  "data": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "organizationId": "00000000-0000-4000-8000-000000000002",
+      "businessUnitId": "00000000-0000-4000-8000-000000000003",
+      "name": "Atividade de exemplo",
+      "createdAt": "2026-10-28T12:00:00.000000Z",
+      "updatedAt": "2026-10-28T12:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "hasNextPage": false
+  }
+}
+```
+
+O exemplo é ilustrativo, não resultado de execução ou dado entregue. `pagination` contém somente `page`, `pageSize` e `hasNextPage`, correspondentes à página efetivamente solicitada ou aos defaults quando omitidos.
+
+### Paginação e ordenação
+
+Aceitar somente `page` e `pageSize`. Defaults: `page = 1`, `pageSize = 20`; máximo de `pageSize = 100`. Ambos devem ser inteiros positivos. Rejeitar com 400 zero, negativos, frações, valores não numéricos, parâmetros repetidos ou ambíguos e qualquer parâmetro desconhecido. Não ajustar silenciosamente valores inválidos. Ordenação fixa: `createdAt DESC, id DESC` (`created_at DESC, id DESC` na persistência), sem ordenação configurável. Não retornar total, `totalItems` ou `totalPages`.
+
+A decisão de defaults/limites e rejeição de parâmetros desconhecidos é local a esta listagem; não altera automaticamente outros endpoints, inclusive a leitura individual P.4. Não expor total global nem contagem de recursos invisíveis. A ordenação é determinística no snapshot; não se promete estabilidade de posições entre requisições distintas sob alterações concorrentes.
+
+### Resultado vazio
+
+Tenant autorizado e consulta sem itens visíveis retornam 200, `data: []` e `hasNextPage: false`, preservando os valores válidos de `page` e `pageSize`. Isso inclui ausência de alcance D1, BUSINESS_UNIT vazio e página sem resultados. Não introduzir 404 para coleção vazia e não converter ausência de alcance em 403 após bootstrap autorizado.
+
+```json
+{
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "hasNextPage": false
+  }
+}
+```
+
+### Autorização, snapshot e isolamento
+
+Aplicar `processing_activity:read` com a matriz DEC-072 existente e avaliar cada grant independentemente. Considerar exclusivamente a área responsável persistida da Activity. Organization, Membership, grants e alcance nunca vêm de body/query como autoridade. Aplicar Organization e alcance D1 no SQL antes de LIMIT/OFFSET; `hasNextPage` considera somente Activities visíveis após a página solicitada. Grants, página e determinação de `hasNextPage` compartilham uma transação tenant-bound READ ONLY / REPEATABLE READ, sem snapshots independentes. Preservar RLS/FORCE RLS, filtros explícitos e runtime restrito; nenhuma consulta privilegiada ou cache de autorização.
+
+Não reutilizar um alcance resolvido em uma transação independente como se pertencesse ao snapshot da listagem. Não acrescentar permissions ou inferir criação/edição de uma concessão de leitura. A P.3 individual e o endpoint P.4 permanecem preservados; o novo caso de uso de coleção deverá manter a fronteira transacional aprovada.
+
+### Erros
+
+Session ausente/inválida/expirada/revogada: 401, preservando `AUTHENTICATION_REQUIRED`. Header ausente: 400/`ORGANIZATION_CONTEXT_REQUIRED`; header inválido ou ambíguo: 400/`INVALID_ORGANIZATION_CONTEXT`. Query inválida: 400/`VALIDATION_ERROR`, no formato público existente. Tenant não autorizado no bootstrap: 403/`ORGANIZATION_ACCESS_DENIED`. Falhas técnicas ou contratuais internas: 500/`INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem SQL, stack, credenciais ou metadados internos. Não converter erros em coleção vazia.
+
+A coleção não deve revelar se Activities fora da visibilidade existem. A regra 404 da DEC-066 para busca individual permanece intacta; esta decisão especifica somente a resposta de coleção.
+
+### Limites
+
+Não autoriza criação/edição/exclusão, POST/PATCH/PUT/DELETE, listagem ampliada, filtros multivalor, busca textual, ordenação configurável, status/workflow, `allowedActions`, summaries relacionados, participantes, versões, publicação, wizard, ROPA, exportação ou frontend. Não aprova novos campos, schema ou migrations. APIQ-013/015/016 e todas as questões de workflow, participantes, versões, criação/edição, Wizard e ROPA permanecem abertas ou em seus estados anteriores.
+
+## Rationale
+
+Permitir descobrir somente Activities já autorizadas pela política D1, com contrato pequeno, limitado e verificável, antes de introduzir escrita e suas decisões pendentes.
+
+## Validation
+
+A futura implementação deve comprovar autenticação e bootstrap reais; validação de paginação e rejeição de parâmetros desconhecidos/repetidos; ordenação por criação e desempate por id; filtro tenant/D1 antes da paginação; `hasNextPage` derivado somente de linhas visíveis; ausência de totais e de campos extras; 200 vazio sem alcance; propagação de falhas como 500 sanitizado; snapshot coerente com grants sob alteração concorrente; isolamento por Membership/Organization e preservação de P.1–P.4. Estes são requisitos, não resultados de testes executados nesta formalização.
+
+## Affected Documents
+
+[07-API.md](07-API.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md) e [features/PROCESSING-ACTIVITY.md](features/PROCESSING-ACTIVITY.md).
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -4243,6 +4341,7 @@ A futura implementação deve comprovar ordem dos guards; origem interna do cont
 | DEC-072 | APPROVED — AUTH-F.1: política funcional mínima de leitura D1 |
 | DEC-073 | APPROVED — ProcessingActivity: persistência mínima e leitura D1 |
 | DEC-074 | APPROVED — P.4: contrato HTTP de leitura individual de ProcessingActivity |
+| DEC-075 | APPROVED — SLICE-007: listagem estrutural mínima de ProcessingActivity |
 
 ---
 
