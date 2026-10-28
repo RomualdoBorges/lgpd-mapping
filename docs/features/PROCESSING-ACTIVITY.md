@@ -5,13 +5,21 @@
 > **Módulo:** Data Mapping  
 > **Documentos relacionados:** `00-PROJECT.md`, `02-DOMAIN.md`, `03-DATABASE.md`, `04-AUTHORIZATION.md`, `05-BUSINESS-RULES.md`, `06-WORKFLOWS.md`, `07-API.md`, `10-AUDIT.md`, `12-OPEN-QUESTIONS.md`, `features/ORGANIZATIONS.md`
 
-## Primeiro recorte persistente aprovado — implementação pendente
+## Primeiro recorte persistente — P.1/P.2/P.3 implementadas
 
 [DEC-073](../13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) aprova somente `id UUID`, `organization_id UUID`, `business_unit_id UUID`, `name TEXT`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`, todos obrigatórios. Nome não vazio nem composto somente por espaços, sem unicidade ou limite máximo adicional. Área responsável obrigatória da mesma Organization, garantida por FK composta; não há áreas participantes neste recorte.
 
-A leitura D1 considera exclusivamente a área responsável: ORGANIZATION da própria Organization, BUSINESS_UNIT somente nas áreas explícitas, vazio sem leitura. A primeira consulta interna retorna apenas `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`. Ausência e falta de visibilidade são indistinguíveis; falhas contratuais/persistência são erros. Grants e Activity no mesmo snapshot tenant-bound REPEATABLE READ; RLS/FORCE RLS e runtime com leitura mínima, sem BYPASSRLS ou ownership; migration incremental futura.
+A leitura D1 considera exclusivamente a área responsável: ORGANIZATION da própria Organization, BUSINESS_UNIT somente nas áreas explícitas, vazio sem leitura. A primeira consulta interna retorna apenas `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`. Ausência e falta de visibilidade são indistinguíveis; falhas contratuais/persistência são erros. Grants e Activity no mesmo snapshot tenant-bound REPEATABLE READ; RLS/FORCE RLS e runtime com leitura mínima, sem BYPASSRLS ou ownership; migration incremental `0004_processing_activities.sql` implementada.
 
-Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As seções posteriores sobre campos, criação, versões e workflow são especificação ampliada, não autorização para o primeiro modelo. Nome/área na identidade estrutural não definem vínculo definitivo com versões. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. Esta formalização não cria tabela, consulta, endpoint ou funcionalidade entregue.
+Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As seções posteriores sobre campos, criação, versões e workflow são especificação ampliada, não autorização para o primeiro modelo. Nome/área na identidade estrutural não definem vínculo definitivo com versões. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. P.1, P.2 e P.3 estão implementadas; P.3 foi integrada pela PR #20 (`0a5e20f`). Os limites da DEC-073 permanecem históricos; a autorização pública adicional é exclusiva da DEC-074 abaixo.
+
+## P.4 — contrato público aprovado; endpoint ainda não implementado
+
+[DEC-074](../13-DECISIONS.md#dec-074--p4-contrato-http-de-leitura-individual-de-processingactivity) APPROVED em 2026-10-28 autoriza `GET /api/v1/processing-activities/:id`. APIQ-011 está DECIDED para envelope `data` contendo exclusivamente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`, com datas ISO 8601 UTC.
+
+Reutilizar guards S3.3/S3.4 e somente a composição P.3, sem receber grants/reach/Membership do cliente. Session inválida: 401; contexto/header ou UUID inválido: 400; bootstrap negado: 403; Activity inexistente/cross-tenant/invisível: mesmo 404 `PROCESSING_ACTIVITY_NOT_FOUND`; falha inesperada: 500 sanitizado. Resumo autorizado: 200. Ver contrato completo em [07-API.md](../07-API.md#28-consultar-atividade).
+
+Não autoriza operações de escrita, listagem, workflow, versões, participantes, ROPA ou frontend. P.4 ainda exige implementação e testes próprios.
 
 ---
 

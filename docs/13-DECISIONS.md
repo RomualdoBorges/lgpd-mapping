@@ -4088,6 +4088,83 @@ São requisitos futuros, não evidências de testes executados.
 
 ---
 
+# DEC-074 — P.4: contrato HTTP de leitura individual de ProcessingActivity
+
+**Status:** APPROVED
+**Decision Date:** 2026-10-28
+
+## Related Questions
+
+APIQ-011, DECIDED pela aprovação humana para a resposta individual de ProcessingActivity. Preserva DEC-063/064/065/066/070/072/073 e todas as demais questões. Não estabelece formato universal para outros recursos ou coleções.
+
+## Context
+
+P.1 (persistência mínima), P.2 (repository tenant-bound) e P.3 (composição D1 transacional) estão implementadas; P.3 foi integrada à develop pela PR #20, merge `0a5e20f`, incluindo os commits `9aa9be4` e `991854a`. A DEC-073 aprovou o resumo interno, sem autorizar endpoint ou DTO público. Esta aprovação humana autoriza expressamente o contrato HTTP P.4 abaixo; o endpoint ainda não está implementado.
+
+## Decision
+
+### Endpoint e resposta pública
+
+Autorizar exclusivamente `GET /api/v1/processing-activities/:id` para leitura individual autenticada, com envelope `data`, contendo somente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt` e `updatedAt`. UUIDs são strings; datas são strings ISO 8601 UTC, preservando a precisão produzida pela consulta interna. Nenhum campo de workflow, versões, participantes ou ROPA integra esse DTO.
+
+```json
+{
+  "data": {
+    "id": "UUID",
+    "organizationId": "UUID",
+    "businessUnitId": "UUID",
+    "name": "string",
+    "createdAt": "ISO UTC",
+    "updatedAt": "ISO UTC"
+  }
+}
+```
+
+Os valores acima indicam tipos, não dados simulados. O resumo não representa versão publicada, draft ou avaliação de compliance. APIQ-011 passa a DECIDED com envelope `data` neste recorte; propostas anteriores de resposta direta não se aplicam a este endpoint.
+
+### Autenticação, tenant e autorização
+
+Executar `SessionAuthenticationGuard` (S3.3) antes de `TenantContextGuard` (S3.4). O header `X-Organization-Id` é seleção explícita de Organization solicitada, não autoridade. O bootstrap valida a Membership própria ativa do User autenticado e estabelece `AuthorizedTenantContext`; extraí-lo pelo mecanismo interno existente, nunca por body/query.
+
+Usar exclusivamente `ProcessingActivityReadService.findById(context, id)` da P.3 como composição de autorização D1. Não aceitar Membership, grants, reach ou transação fornecidos pelo cliente. Não resolver grants em transação separada nem duplicar a matriz DEC-072. Preservar a mesma transação tenant-bound READ ONLY / REPEATABLE READ da P.3 e seus filtros/RLS. Não criar cache de autorização.
+
+### Validação e semântica HTTP
+
+Validar o UUID na fronteira HTTP antes de chamar P.3, sem impor restrição de versão adicional ao formato já aceito internamente. Guards precedem a validação dos parâmetros da rota. Reutilizar os contratos públicos existentes, sem alterar os guards.
+
+| Condição | Status e contrato |
+|---|---|
+| Session ausente, inválida, expirada ou revogada | 401 / `AUTHENTICATION_REQUIRED`, preservando S3.3 |
+| Header `X-Organization-Id` ausente | 400 / `ORGANIZATION_CONTEXT_REQUIRED` |
+| Header inválido ou com múltiplos valores | 400 / `INVALID_ORGANIZATION_CONTEXT` |
+| UUID de Activity inválido, após os guards | 400 / `VALIDATION_ERROR`, detalhe `INVALID_UUID` para `id` |
+| Organization não autorizada no bootstrap, inclusive Membership ausente/inativa | 403 / `ORGANIZATION_ACCESS_DENIED` |
+| Activity inexistente, cross-tenant ou fora da visibilidade D1 | 404 / `PROCESSING_ACTIVITY_NOT_FOUND`, mensagem `Atividade de tratamento não encontrada.` |
+| Activity autorizada | 200 com o DTO aprovado |
+| Falha inesperada, contratual interna ou de persistência | 500 / `INTERNAL_ERROR`, mensagem `Ocorreu um erro inesperado.`, sem detalhes técnicos |
+
+Todo `null` da P.3 usa o mesmo 404, sem distinguir publicamente inexistência, cross-tenant, ausência de alcance ou Membership tornada inativa entre bootstrap e snapshot. Nesse último caso, não realizar nova consulta para produzir uma classificação diferente. Inatividade já detectada no bootstrap permanece 403 pelo contrato S3.4.
+
+DEC-066 permanece DECIDED e inalterada: `403/FORBIDDEN` cabe a ação negada sobre recurso legitimamente visível. Este GET não acrescenta uma segunda decisão de ação após a visibilidade D1; não criar lookup privilegiado para distinguir 403 de 404. Erros técnicos continuam erros, nunca `null`, 404 ou sucesso vazio. Não expor SQL, stack, credenciais, cookies ou metadados de autorização.
+
+### Limites e estado de entrega
+
+P.4 está aprovada para implementação, ainda não implementada. Não autoriza POST/PATCH/PUT/DELETE, listagem, filtros, frontend, wizard, workflow, versões, publicação, participantes, ROPA ou exportação. Não altera schema, migrations, P.1/P.2/P.3 ou a política D1. Questões abertas dessas matérias permanecem preservadas.
+
+## Rationale
+
+Expor a leitura mínima já protegida pela P.3, com contrato de sucesso explícito e negativas uniformes, sem ampliar a superfície funcional ou revelar recursos invisíveis.
+
+## Validation
+
+A futura implementação deve comprovar ordem dos guards; origem interna do contexto; rejeição de UUID inválido antes da P.3; resposta com somente os seis campos em `data`; igualdade do 404 para inexistente/cross-tenant/invisível; 401/400/403 preservados; 500 sanitizado sem fallback; integração HTTP/PostgreSQL real e preservação das regressões P.3. Estes são requisitos futuros, não resultados de testes desta formalização.
+
+## Affected Documents
+
+[07-API.md](07-API.md), [12-OPEN-QUESTIONS.md](12-OPEN-QUESTIONS.md), [13-DECISIONS.md](13-DECISIONS.md), [14-IMPLEMENTATION-PLAN.md](14-IMPLEMENTATION-PLAN.md), [20-API-CONTRACTS.md](20-API-CONTRACTS.md), [28-PRE-IMPLEMENTATION-CHECKLIST.md](28-PRE-IMPLEMENTATION-CHECKLIST.md) e [features/PROCESSING-ACTIVITY.md](features/PROCESSING-ACTIVITY.md).
+
+---
+
 # 14. Resumo das decisões
 
 | ID | Decisão |
@@ -4165,6 +4242,7 @@ São requisitos futuros, não evidências de testes executados.
 | DEC-071 | Escolhas técnicas e escopo do primeiro frontend shell |
 | DEC-072 | APPROVED — AUTH-F.1: política funcional mínima de leitura D1 |
 | DEC-073 | APPROVED — ProcessingActivity: persistência mínima e leitura D1 |
+| DEC-074 | APPROVED — P.4: contrato HTTP de leitura individual de ProcessingActivity |
 
 ---
 
