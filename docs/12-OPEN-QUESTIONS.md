@@ -4,6 +4,12 @@
 > **Status:** Living Document  
 > **Objetivo:** centralizar decisões pendentes que afetam domínio, banco, API, frontend, segurança, workflow e implementação assistida por IA.
 
+## ProcessingActivity — fronteira aprovada sem encerramento de Questions
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) APPROVED em 2026-10-28 aprova apenas a primeira identidade persistente de seis campos, área responsável obrigatória no mesmo tenant, visibilidade D1 exclusivamente por essa área e futura leitura em snapshot REPEATABLE READ tenant-bound. Não aprova áreas participantes, owner individual, workflow, versões ou ROPA.
+
+PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN, sem alteração do texto ou estado das questões canônicas. PAQ-003 não é decidida pela escolha limitada de área responsável; VALQ-002 permanece aberta para limites futuros, sem limite máximo adicional de nome neste recorte. Nenhuma outra questão é encerrada. A localização atual de nome/área não decide sua relação definitiva com versões. A aprovação é normativa; persistência/consulta ainda não implementadas.
+
 ---
 
 # 1. Objetivo

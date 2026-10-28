@@ -5,6 +5,14 @@
 > **Módulo:** Data Mapping  
 > **Documentos relacionados:** `00-PROJECT.md`, `02-DOMAIN.md`, `03-DATABASE.md`, `04-AUTHORIZATION.md`, `05-BUSINESS-RULES.md`, `06-WORKFLOWS.md`, `07-API.md`, `10-AUDIT.md`, `12-OPEN-QUESTIONS.md`, `features/ORGANIZATIONS.md`
 
+## Primeiro recorte persistente aprovado — implementação pendente
+
+[DEC-073](../13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) aprova somente `id UUID`, `organization_id UUID`, `business_unit_id UUID`, `name TEXT`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`, todos obrigatórios. Nome não vazio nem composto somente por espaços, sem unicidade ou limite máximo adicional. Área responsável obrigatória da mesma Organization, garantida por FK composta; não há áreas participantes neste recorte.
+
+A leitura D1 considera exclusivamente a área responsável: ORGANIZATION da própria Organization, BUSINESS_UNIT somente nas áreas explícitas, vazio sem leitura. A primeira consulta interna retorna apenas `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`. Ausência e falta de visibilidade são indistinguíveis; falhas contratuais/persistência são erros. Grants e Activity no mesmo snapshot tenant-bound REPEATABLE READ; RLS/FORCE RLS e runtime com leitura mínima, sem BYPASSRLS ou ownership; migration incremental futura.
+
+Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. As seções posteriores sobre campos, criação, versões e workflow são especificação ampliada, não autorização para o primeiro modelo. Nome/área na identidade estrutural não definem vínculo definitivo com versões. PAQ-001, PAQ-003, DQ-009, VALQ-002, WFQ-001/007/008/015, DBQ-002, AUDQ-013 e ROPAQ-001/002 permanecem OPEN. Esta formalização não cria tabela, consulta, endpoint ou funcionalidade entregue.
+
 ---
 
 # 1. Objetivo

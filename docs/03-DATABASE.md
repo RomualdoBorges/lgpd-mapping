@@ -7,6 +7,14 @@
 > **Documentos relacionados:** `00-PROJECT.md`, `01-ARCHITECTURE.md`, `02-DOMAIN.md`
 
 
+## ProcessingActivity — persistência mínima aprovada, não implementada
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) aprova somente `id UUID`, `organization_id UUID`, `business_unit_id UUID`, `name TEXT`, `created_at TIMESTAMPTZ` e `updated_at TIMESTAMPTZ`, todos obrigatórios. Nome não vazio nem composto somente por espaços, sem unicidade ou limite máximo adicional. Área responsável obrigatória; FK para Organization e FK composta `(organization_id, business_unit_id)` para BusinessUnit do mesmo tenant.
+
+A futura tabela exige RLS habilitado/forçado e privilégios mínimos de leitura, com runtime sem BYPASSRLS ou ownership; nenhuma escrita é aprovada. Migration incremental futura, sem editar migrations aplicadas. Grants e Activity devem ser lidos em snapshot coerente na mesma transação tenant-bound REPEATABLE READ. Os boundaries atuais não passam a oferecer essa composição automaticamente. RLS não substitui filtro de área/permission. Não há schema, SQL ou privilégios novos entregues nesta formalização.
+
+O modelo amplo de Processing Activities adiante é referência conceitual futura; prevalecem os seis campos da DEC-073 no primeiro recorte. Description, status, compliance, current_version, created_by e deleted_at não são aprovados para essa persistência mínima.
+
 ## S3.5 — resolução estrutural implementada e auditada
 
 AUTHQ-015 → [DEC-070](13-DECISIONS.md#dec-070--s35-como-resolução-estrutural-de-concessões-do-membership-autorizado), aprovada em 2026-10-23, delimita a S3.5 como resolução estrutural de concessões após a S3.4. Permission matrix, Role → Permission e autorização funcional pertencem a etapa posterior; a autorização funcional não está concluída. A aprovação inicial limitou-se à formalização documental; autorizações humanas posteriores permitiram implementar S3.5.1 a S3.5.4, agora concluídas no escopo estrutural. Ver o [registro de encerramento](14-IMPLEMENTATION-PLAN.md#encerramento-documental-da-s35) para commits e validações reportadas.

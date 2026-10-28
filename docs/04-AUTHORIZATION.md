@@ -8,6 +8,12 @@
 > **Question IDs:** referências canônicas em `12-OPEN-QUESTIONS.md`; migrações dos IDs locais registradas por documento de origem no registro central. Perguntas e recomendações locais não encerram essas questões.
 
 
+## ProcessingActivity — primeira visibilidade persistente D1 aprovada
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) define um recorte futuro cuja visibilidade usa exclusivamente a área responsável persistida. Aplicar `processing_activity:read` da DEC-072: ORGANIZATION consulta somente a Organization autorizada; BUSINESS_UNIT consulta somente áreas responsáveis explicitamente no alcance; conjunto vazio não concede leitura. Não promover scope, expandir hierarquia ou considerar participantes.
+
+O descriptor deve derivar da persistência; UUID/body/query não são autoridade sobre Organization ou área. Não liberar dados antes da autorização. A consulta retorna somente `id`, `organizationId`, `businessUnitId`, `name`, `createdAt`, `updatedAt`, sem significado de versão vigente/publicação. Ausência e falta de visibilidade são indistinguíveis internamente; erros continuam erros. Preservar DEC-066 na futura integração HTTP. Snapshot conjunto de grants/Activity em transação tenant-bound REPEATABLE READ; nenhuma mudança nos contratos DEC-070/072 ou leitura real implementada por este registro.
+
 ## AUTH-F.1 — política de leitura D1 aprovada, implementação pendente
 
 AUTHQ-016 está DECIDED e a [DEC-072](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1) está APPROVED em 2026-10-23. Aprova somente `processing_activity:read` e `ropa:read`: COLLABORATOR/BUSINESS_UNIT lê Activities das áreas explícitas, MANAGER/BUSINESS_UNIT lê Activities/ROPA dessas áreas e DPO/ORGANIZATION lê ambos na Organization autorizada. Demais combinações não concedem leitura D1 nesta política. Não promover scope, herdar áreas ou emprestar áreas entre assignments.

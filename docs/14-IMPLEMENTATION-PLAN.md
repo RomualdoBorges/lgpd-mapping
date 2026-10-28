@@ -5,6 +5,17 @@
 > **Objetivo:** transformar as especificações funcionais e técnicas em uma ordem segura e incremental de desenvolvimento assistido por IA.
 
 
+## ProcessingActivity — próximos recortes após DEC-073
+
+[DEC-073](13-DECISIONS.md#dec-073--processingactivity-persistência-mínima-e-leitura-d1) APPROVED em 2026-10-28: modelo estrutural mínimo e primeira leitura interna segura aprovados; implementação ainda pendente e dependente de autorização específica.
+
+1. Persistência dos seis campos aprovados, migration incremental, FK tenant-bound, RLS/FORCE RLS, leitura mínima do runtime e testes PostgreSQL de integridade/privilégios.
+2. Repository por UUID limitado à Organization e à área responsável conforme alcance D1; somente os seis campos de retorno; ausência/falta de visibilidade indistinguíveis; erros propagados.
+3. Composição de grants e Activity em snapshot coerente na mesma transação tenant-bound REPEATABLE READ; descriptor persistido e verificação antes de liberar dados. Não reutilizar resolução concluída em transação independente como snapshot compartilhado.
+4. Auditoria dos dez critérios da decisão e reconciliação documental com evidências reais após entrega.
+
+Não autoriza criação/atualização por usuários, exclusão, status/workflow, versões, publicação, compliance, owner individual obrigatório, áreas participantes, ROPA, endpoints ou frontend. PAQ-003 e questões de versões/workflow permanecem abertas. Não iniciar repository/composição antes de aprovar o recorte técnico correspondente; esta etapa registra somente documentação.
+
 ## AUTH-F.1 — plano proposto de política de leitura D1
 
 AUTHQ-016 DECIDED → [DEC-072 APPROVED](13-DECISIONS.md#dec-072--auth-f1-política-funcional-mínima-de-leitura-d1). Política aprovada em 2026-10-23; implementação ainda não autorizada nesta etapa e autorização funcional não declarada concluída. AUTHQ-004 permanece IN_ANALYSIS no escopo remanescente; S3.5 estrutural permanece concluída.
