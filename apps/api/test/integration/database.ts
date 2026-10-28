@@ -44,6 +44,7 @@ export async function createTestDatabase(
   // No CREATE DATABASE privilege is granted to the application runtime/migrator.
   const admin = new pg.Pool({
     ...runtimeConfig,
+    statement_timeout: 10000,
     database: 'postgres',
     user: 'lgpd_admin',
     password: process.env.DB_ADMIN_PASSWORD,
